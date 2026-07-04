@@ -3,6 +3,8 @@
 A fast, pretty, terminal-native client for [Clockify](https://clockify.me) time tracking.
 One binary, one config file, zero bundled Chromiums.
 
+![clockify in a terminal: start a timer, stop it, browse the log, edit and delete an entry by its short id](assets/demo.png)
+
 Yes, it's written in Rust. We know. Every terminal tool is written in Rust now — it's
 practically a legal requirement. But consider the alternative: the official desktop
 time tracker is an Electron app, which means that somewhere out there a computer is
