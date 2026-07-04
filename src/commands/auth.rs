@@ -41,7 +41,7 @@ pub fn wizard() -> Result<()> {
         }
     }
 
-    let (client, user) = prompt_for_key(&theme)?;
+    let (client, user, key) = prompt_for_key(&theme)?;
     println!("{} Hi, {} ({})!", "✓".green().bold(), user.name.bold(), user.email);
 
     let workspaces = client.workspaces()?;
@@ -67,6 +67,7 @@ pub fn wizard() -> Result<()> {
         }
     };
 
+    cfg.api_key = Some(key);
     cfg.user_id = Some(user.id);
     cfg.user_name = Some(user.name);
     cfg.workspace_id = Some(workspace.id);
@@ -83,7 +84,7 @@ pub fn wizard() -> Result<()> {
     Ok(())
 }
 
-fn prompt_for_key(theme: &ColorfulTheme) -> Result<(api::Client, User)> {
+fn prompt_for_key(theme: &ColorfulTheme) -> Result<(api::Client, User, String)> {
     for attempt in 1..=3 {
         let key: String = Password::with_theme(theme)
             .with_prompt("Paste your API key (input is hidden)")
@@ -96,12 +97,7 @@ fn prompt_for_key(theme: &ColorfulTheme) -> Result<(api::Client, User)> {
         }
         let client = api::Client::new(key.clone())?;
         match client.current_user() {
-            Ok(user) => {
-                let mut cfg = Config::load()?;
-                cfg.api_key = Some(key);
-                cfg.save()?;
-                return Ok((client, user));
-            }
+            Ok(user) => return Ok((client, user, key)),
             Err(e) if attempt < 3 => {
                 eprintln!("{} That key didn't work ({e}). Let's try again.", "✗".red());
             }
