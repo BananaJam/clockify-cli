@@ -565,14 +565,18 @@ impl App {
         let result: Result<String> = (|| {
             match kind {
                 FormKind::Start => {
+                    if texts[0].is_empty() {
+                        bail!("description is required");
+                    }
                     let start = if texts[1].is_empty() { Utc::now() } else { parse_time(&texts[1])? };
                     if self.running.is_some() {
                         self.ctx.client.stop_timer(&self.ctx.workspace_id, &self.ctx.user_id, start)?;
                     }
-                    let mut body = json!({ "start": to_api(start), "billable": billable });
-                    if !texts[0].is_empty() {
-                        body["description"] = json!(texts[0]);
-                    }
+                    let mut body = json!({
+                        "start": to_api(start),
+                        "description": texts[0],
+                        "billable": billable,
+                    });
                     if let Some(pid) = &project_id {
                         body["projectId"] = json!(pid);
                     }
@@ -580,6 +584,9 @@ impl App {
                     Ok("timer started".to_string())
                 }
                 FormKind::Add => {
+                    if texts[0].is_empty() {
+                        bail!("description is required");
+                    }
                     let from = parse_time(&texts[1])?;
                     let to = parse_time(&texts[2])?;
                     if to <= from {

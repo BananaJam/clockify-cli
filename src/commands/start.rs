@@ -8,7 +8,7 @@ use crate::resolve;
 use crate::time::{fmt_duration, fmt_local_time, parse_time, to_api};
 
 pub struct Args {
-    pub description: Option<String>,
+    pub description: String,
     pub project: Option<String>,
     pub task: Option<String>,
     pub billable: bool,
@@ -16,6 +16,10 @@ pub struct Args {
 }
 
 pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
+    let description = args.description.trim();
+    if description.is_empty() {
+        bail!("the description must not be empty");
+    }
     let start = match &args.at {
         Some(s) => parse_time(s)?,
         None => Utc::now(),
@@ -40,11 +44,9 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
 
     let mut body = json!({
         "start": to_api(start),
+        "description": description,
         "billable": args.billable,
     });
-    if let Some(d) = &args.description {
-        body["description"] = json!(d);
-    }
     if let Some(p) = &project {
         body["projectId"] = json!(p.id);
     }
@@ -54,11 +56,7 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
 
     let entry = ctx.client.create_time_entry(&ctx.workspace_id, &body)?;
 
-    let mut what = if entry.description.is_empty() {
-        "(no description)".dimmed().to_string()
-    } else {
-        entry.description.bold().to_string()
-    };
+    let mut what = entry.description.bold().to_string();
     if let Some(p) = &project {
         what.push_str(&format!(" [{}]", p.name.blue()));
         if let Some(t) = &task {

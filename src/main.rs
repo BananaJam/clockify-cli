@@ -47,7 +47,7 @@ enum Cmd {
     /// Start a timer (stops any already-running one)
     Start {
         /// What you're working on
-        description: Option<String>,
+        description: String,
         /// Project name or ID
         #[arg(short, long)]
         project: Option<String>,
