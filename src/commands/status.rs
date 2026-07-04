@@ -1,6 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 
+use super::short_id;
 use crate::config::Ctx;
 use crate::time::{fmt_duration_secs, fmt_local_time};
 
@@ -27,6 +28,6 @@ pub fn run(ctx: &Ctx) -> Result<()> {
     }
     println!("  Started:  {}", fmt_local_time(entry.time_interval.start));
     println!("  Elapsed:  {}", fmt_duration_secs(entry.duration()).bold());
-    println!("  Entry ID: {}", entry.id.dimmed());
+    println!("  Entry ID: {}", short_id(&entry.id));
     Ok(())
 }

@@ -1,17 +1,18 @@
 use anyhow::{Result, bail};
 use colored::Colorize;
 
-use super::table;
 use crate::config::{Config, Ctx};
 
 pub fn list(ctx: &Ctx) -> Result<()> {
     let workspaces = ctx.client.workspaces()?;
-    let mut t = table(&["", "Name", "ID"]);
+    let name_w = workspaces.iter().map(|w| w.name.chars().count()).max().unwrap_or(0);
     for w in &workspaces {
-        let active = if w.id == ctx.workspace_id { "✓" } else { "" };
-        t.add_row(vec![active.to_string(), w.name.clone(), w.id.clone()]);
+        let current = w.id == ctx.workspace_id;
+        let marker = if current { "✓".green().bold() } else { " ".normal() };
+        let name = format!("{:<name_w$}", w.name);
+        let name = if current { name.bold() } else { name.normal() };
+        println!("{marker} {name}  {}", w.id.dimmed());
     }
-    println!("{t}");
     Ok(())
 }
 

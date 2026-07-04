@@ -1,6 +1,7 @@
 use anyhow::Result;
+use colored::Colorize;
 
-use super::table;
+use super::in_project_color;
 use crate::config::Ctx;
 use crate::resolve;
 
@@ -8,18 +9,23 @@ pub fn run(ctx: &Ctx, project: &str) -> Result<()> {
     let project = resolve::project(ctx, project)?;
     let tasks = ctx.client.tasks(&ctx.workspace_id, &project.id)?;
     if tasks.is_empty() {
-        println!("Project {} has no tasks.", project.name);
+        println!("Project {} has no tasks.", in_project_color(&project.name, Some(&project)));
         return Ok(());
     }
-    let mut t = table(&["Name", "Status", "ID"]);
+    let name_w = tasks.iter().map(|t| t.name.chars().count()).max().unwrap_or(0);
+    println!(
+        "{}  {}",
+        in_project_color(&project.name, Some(&project)).bold(),
+        format!("· {} task{}", tasks.len(), if tasks.len() == 1 { "" } else { "s" }).yellow()
+    );
     for task in &tasks {
-        t.add_row(vec![
-            task.name.clone(),
-            task.status.clone().unwrap_or_default(),
-            task.id.clone(),
-        ]);
+        let status = match task.status.as_deref() {
+            Some("ACTIVE") => "active".green(),
+            Some("DONE") => "done".dimmed(),
+            Some(other) => other.to_lowercase().normal(),
+            None => "".normal(),
+        };
+        println!("  {:<name_w$}  {:<8}  {}", task.name, status, task.id.dimmed());
     }
-    println!("Tasks in {}:", project.name);
-    println!("{t}");
     Ok(())
 }

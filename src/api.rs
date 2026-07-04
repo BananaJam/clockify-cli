@@ -6,7 +6,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::models::{Project, Task, TimeEntry, User, Workspace};
-use crate::time::to_api;
+use crate::time::{to_api, to_api_query};
 
 const BASE: &str = "https://api.clockify.me/api/v1";
 const PAGE_SIZE: usize = 200;
@@ -146,7 +146,7 @@ impl Client {
     ) -> Result<Vec<TimeEntry>> {
         self.get_paged(
             &format!("/workspaces/{ws}/user/{user}/time-entries"),
-            &[("start", to_api(start)), ("end", to_api(end))],
+            &[("start", to_api_query(start)), ("end", to_api_query(end))],
             limit,
         )
     }

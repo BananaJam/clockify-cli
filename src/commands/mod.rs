@@ -15,24 +15,54 @@ pub mod workspaces;
 use std::collections::HashMap;
 
 use anyhow::Result;
-use comfy_table::{ContentArrangement, Table, presets};
+use colored::{ColoredString, Colorize};
 
 use crate::config::Ctx;
+use crate::models::Project;
 
-pub fn table(headers: &[&str]) -> Table {
-    let mut t = Table::new();
-    t.load_preset(presets::UTF8_FULL_CONDENSED)
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(headers.to_vec());
-    t
-}
-
-/// Map of project id -> project name for the current workspace.
-pub fn project_names(ctx: &Ctx) -> Result<HashMap<String, String>> {
+/// Map of project id -> project for the current workspace.
+pub fn project_map(ctx: &Ctx) -> Result<HashMap<String, Project>> {
     Ok(ctx
         .client
         .projects(&ctx.workspace_id)?
         .into_iter()
-        .map(|p| (p.id, p.name))
+        .map(|p| (p.id.clone(), p))
         .collect())
+}
+
+fn hex_rgb(hex: &str) -> Option<(u8, u8, u8)> {
+    let hex = hex.strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some((r, g, b))
+}
+
+/// Render text in a project's Clockify color (falls back to blue).
+pub fn in_project_color(text: &str, project: Option<&Project>) -> ColoredString {
+    match project.and_then(|p| p.color.as_deref()).and_then(hex_rgb) {
+        Some((r, g, b)) => text.truecolor(r, g, b),
+        None => text.blue(),
+    }
+}
+
+/// Short display form of an entry id: the last characters, with the
+/// shortest suffix that uniquely identifies the entry highlighted —
+/// typing just the highlighted part is enough to address it.
+pub fn styled_id(id: &str, unique_len: usize) -> String {
+    let unique_len = unique_len.clamp(crate::resolve::MIN_SUFFIX, id.len());
+    let shown = unique_len.max(6).min(id.len());
+    let tail = &id[id.len() - shown..];
+    let (dim, bright) = tail.split_at(shown - unique_len);
+    format!("{}{}{}", "…".dimmed(), dim.dimmed(), bright.yellow().bold())
+}
+
+/// Like styled_id when the unique length is unknown (no lookback fetched):
+/// shows the last 6 characters without claiming any part is sufficient.
+pub fn short_id(id: &str) -> String {
+    let tail: String = id.chars().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect();
+    format!("{}{}", "…".dimmed(), tail.yellow().dimmed())
 }
