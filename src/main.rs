@@ -112,7 +112,7 @@ enum Cmd {
     },
     /// Edit an existing time entry
     Edit {
-        /// Time entry ID (see `clockify log`)
+        /// Entry ID or unique id suffix (see `clockify log`)
         id: String,
         /// New description
         #[arg(short, long)]
@@ -129,7 +129,7 @@ enum Cmd {
     },
     /// Delete a time entry
     Delete {
-        /// Time entry ID (see `clockify log`)
+        /// Entry ID or unique id suffix (see `clockify log`)
         id: String,
         /// Skip the confirmation prompt
         #[arg(short, long)]

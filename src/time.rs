@@ -4,9 +4,16 @@ use chrono::{
     Utc,
 };
 
-/// Format a timestamp the way the Clockify API expects it.
+/// Format a timestamp for request bodies, which Clockify reads as true UTC.
 pub fn to_api(dt: DateTime<Utc>) -> String {
     dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+/// Format a timestamp for GET query parameters (start/end filters).
+/// Clockify interprets those in the user's profile timezone and ignores
+/// the offset marker, so send local wall-clock time, not UTC.
+pub fn to_api_query(dt: DateTime<Utc>) -> String {
+    dt.with_timezone(&Local).format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 fn local_to_utc(naive: NaiveDateTime) -> Result<DateTime<Utc>> {

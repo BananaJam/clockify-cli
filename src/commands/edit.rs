@@ -19,7 +19,7 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         bail!("nothing to change — pass at least one of --description, --project, --from, --to");
     }
 
-    let existing = ctx.client.time_entry(&ctx.workspace_id, &args.id)?;
+    let existing = resolve::entry(ctx, &args.id)?;
 
     let start = match &args.from {
         Some(s) => parse_time(s)?,
@@ -60,7 +60,7 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         body["taskId"] = json!(tid);
     }
 
-    let updated = ctx.client.update_time_entry(&ctx.workspace_id, &args.id, &body)?;
+    let updated = ctx.client.update_time_entry(&ctx.workspace_id, &existing.id, &body)?;
     println!(
         "{} Updated {} ({})",
         "✓".green().bold(),

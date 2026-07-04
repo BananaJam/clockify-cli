@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use chrono::{Datelike, Days, Duration, Local};
 use colored::Colorize;
 
-use super::{project_names, table};
+use super::{project_map, table};
 use crate::config::Ctx;
 use crate::time::{day_range, fmt_duration, parse_date};
 
@@ -39,14 +39,14 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         return Ok(());
     }
 
-    let names = project_names(ctx)?;
+    let projects = project_map(ctx)?;
     let mut per_project: HashMap<String, Duration> = HashMap::new();
     let mut total = Duration::zero();
     for e in &entries {
         let key = e
             .project_id
             .as_deref()
-            .map(|id| names.get(id).cloned().unwrap_or_else(|| id.to_string()))
+            .map(|id| projects.get(id).map_or_else(|| id.to_string(), |p| p.name.clone()))
             .unwrap_or_else(|| "(no project)".to_string());
         *per_project.entry(key).or_insert_with(Duration::zero) += e.duration();
         total += e.duration();

@@ -28,6 +28,9 @@ pub struct Project {
     pub billable: bool,
     #[serde(default)]
     pub archived: bool,
+    /// Hex color like "#4CAF50", as configured in Clockify.
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

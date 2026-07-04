@@ -4,10 +4,11 @@ use dialoguer::Confirm;
 use dialoguer::theme::ColorfulTheme;
 
 use crate::config::Ctx;
+use crate::resolve;
 use crate::time::{fmt_duration, fmt_local_date};
 
 pub fn run(ctx: &Ctx, id: &str, yes: bool) -> Result<()> {
-    let entry = ctx.client.time_entry(&ctx.workspace_id, id)?;
+    let entry = resolve::entry(ctx, id)?;
     let desc = if entry.description.is_empty() {
         "(no description)".to_string()
     } else {
@@ -29,7 +30,7 @@ pub fn run(ctx: &Ctx, id: &str, yes: bool) -> Result<()> {
         }
     }
 
-    ctx.client.delete_time_entry(&ctx.workspace_id, id)?;
+    ctx.client.delete_time_entry(&ctx.workspace_id, &entry.id)?;
     println!("{} Deleted \"{desc}\"", "✓".green().bold());
     Ok(())
 }
