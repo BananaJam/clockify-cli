@@ -80,14 +80,23 @@ clockify add "standup" --from 09:30 --to 09:45 -p backend
 clockify log --week                               # entries grouped by day, with totals
 clockify report --month                           # hours per project, with bars
 clockify edit 41d7 --to 17:30                     # edit by short id suffix
+clockify edit @ -p backend                        # @ is the running timer
 clockify delete 41d7                              # delete (asks first; -y skips)
 clockify projects                                 # grouped by client
+clockify projects default backend                 # default project for new entries
 clockify workspaces switch <name>                 # change workspace
 ```
 
 Projects and tasks are matched by name — case-insensitive, substring is enough,
 ambiguity gets you a helpful list. Times accept `HH:MM`, `yesterday 17:00`,
 `YYYY-MM-DD HH:MM`, or full RFC 3339, all interpreted in your local timezone.
+
+Set a default project once (`clockify projects default backend`) and `start` and
+`add` will use it whenever you don't pass `--project` — pass `--no-project` for
+the rare entry that genuinely belongs to nothing. The default is remembered per
+workspace, and the TUI forms pre-select it too. Started the timer on the wrong
+project anyway? `clockify edit @ -p <project>` fixes the running timer in place —
+`@` always means "the running timer", jj-style.
 
 ### Short entry ids
 

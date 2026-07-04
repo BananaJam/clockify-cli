@@ -10,6 +10,7 @@ use crate::time::{fmt_duration, fmt_local_time, parse_time, to_api};
 pub struct Args {
     pub description: String,
     pub project: Option<String>,
+    pub no_project: bool,
     pub task: Option<String>,
     pub billable: bool,
     pub at: Option<String>,
@@ -25,7 +26,11 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         None => Utc::now(),
     };
 
-    let project = args.project.as_deref().map(|p| resolve::project(ctx, p)).transpose()?;
+    let project = match (&args.project, args.no_project) {
+        (Some(p), _) => Some(resolve::project(ctx, p)?),
+        (None, true) => None,
+        (None, false) => resolve::default_project(ctx)?,
+    };
     let task = match (&args.task, &project) {
         (Some(t), Some(p)) => Some(resolve::task(ctx, &p.id, t)?),
         (Some(_), None) => bail!("--task requires --project"),

@@ -419,6 +419,7 @@ impl App {
         cfg.workspace_name = Some(w.name.clone());
         cfg.save()?;
         self.ctx.workspace_id = w.id.clone();
+        self.ctx.default_project = cfg.default_projects.get(&w.id).cloned();
         self.workspace_name = w.name.clone();
         // New epoch: in-flight responses for the old workspace get dropped.
         self.epoch += 1;
@@ -435,13 +436,19 @@ impl App {
 
     // --- forms ---
 
+    /// Position of the configured default project in the picker.
+    fn default_project_idx(&self) -> Option<usize> {
+        let default = self.ctx.default_project.as_ref()?;
+        self.active_projects().iter().position(|p| p.id == default.id)
+    }
+
     fn open_start_form(&mut self) {
         self.mode = Mode::Form(Form {
             kind: FormKind::Start,
             title: " Start timer ",
             fields: vec![
                 Field::Text { label: "Description", input: Input::new("") },
-                Field::Project { label: "Project", idx: None },
+                Field::Project { label: "Project", idx: self.default_project_idx() },
                 Field::Text { label: "At (HH:MM)", input: Input::new("") },
                 Field::Toggle { label: "Billable", on: false },
             ],
@@ -457,7 +464,7 @@ impl App {
             title: " Add entry ",
             fields: vec![
                 Field::Text { label: "Description", input: Input::new("") },
-                Field::Project { label: "Project", idx: None },
+                Field::Project { label: "Project", idx: self.default_project_idx() },
                 Field::Text { label: "From", input: Input::new("") },
                 Field::Text { label: "To", input: Input::new("") },
                 Field::Toggle { label: "Billable", on: false },
@@ -620,11 +627,19 @@ impl App {
                     // A project picker showing none keeps the original project
                     // (workspaces can require one; archived ones aren't listed).
                     let pid = project_id.or_else(|| existing.project_id.clone());
+                    // Clockify resets billability to the project default on a
+                    // project change and rejects any other value when the user
+                    // can't override it — send the default then, omit otherwise.
                     let mut body = json!({
                         "start": to_api(from),
                         "description": texts[0],
-                        "billable": existing.billable,
                     });
+                    if pid != existing.project_id
+                        && let Some(p) =
+                            pid.as_deref().and_then(|id| self.projects.iter().find(|p| p.id == id))
+                    {
+                        body["billable"] = json!(p.billable);
+                    }
                     if let Some(end) = end {
                         body["end"] = json!(to_api(end));
                     }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use chrono::{Days, Utc};
 
 use crate::config::Ctx;
@@ -54,17 +54,24 @@ pub fn unique_suffix_lens<'a>(ids: impl IntoIterator<Item = &'a str>) -> HashMap
         .collect()
 }
 
-/// Find a time entry by full id or by a unique suffix of its id
-/// (searched among the entries of the last 90 days).
+/// Find a time entry by full id, by a unique suffix of its id
+/// (searched among the entries of the last 90 days), or by `@`
+/// for the currently running timer.
 pub fn entry(ctx: &Ctx, reference: &str) -> Result<TimeEntry> {
     let needle = reference.trim().to_lowercase();
+    if needle == "@" {
+        return ctx
+            .client
+            .running_entry(&ctx.workspace_id, &ctx.user_id)?
+            .context("no timer is running");
+    }
     if looks_like_id(&needle) {
         return ctx.client.time_entry(&ctx.workspace_id, &needle);
     }
     if needle.is_empty() || !needle.chars().all(|c| c.is_ascii_hexdigit()) {
         bail!(
-            "'{reference}' is not an entry id — use the full 24-character id or a hex id suffix \
-             (see `clockify log`)"
+            "'{reference}' is not an entry id — use the full 24-character id, a hex id suffix \
+             (see `clockify log`), or '@' for the running timer"
         );
     }
 
@@ -129,6 +136,27 @@ pub fn project(ctx: &Ctx, needle: &str) -> Result<Project> {
     let projects = ctx.client.projects(&ctx.workspace_id)?;
     let active: Vec<Project> = projects.into_iter().filter(|p| !p.archived).collect();
     pick("project", needle, &active, |p| &p.id, |p| &p.name).cloned()
+}
+
+/// The configured default project of the current workspace, if any.
+/// Errors when the config points at a project that no longer exists.
+pub fn default_project(ctx: &Ctx) -> Result<Option<Project>> {
+    let Some(default) = &ctx.default_project else {
+        return Ok(None);
+    };
+    let projects = ctx.client.projects(&ctx.workspace_id)?;
+    match projects.into_iter().find(|p| p.id == default.id) {
+        Some(p) if !p.archived => Ok(Some(p)),
+        Some(_) => bail!(
+            "the default project '{}' is archived — pick another with `clockify projects default` \
+             or pass --project / --no-project",
+            default.name
+        ),
+        None => bail!(
+            "the default project '{}' no longer exists — run `clockify projects default --clear`",
+            default.name
+        ),
+    }
 }
 
 pub fn task(ctx: &Ctx, project_id: &str, needle: &str) -> Result<Task> {

@@ -11,6 +11,7 @@ pub struct Args {
     pub from: String,
     pub to: String,
     pub project: Option<String>,
+    pub no_project: bool,
     pub task: Option<String>,
     pub billable: bool,
 }
@@ -22,7 +23,11 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         bail!("--to must be after --from");
     }
 
-    let project = args.project.as_deref().map(|p| resolve::project(ctx, p)).transpose()?;
+    let project = match (&args.project, args.no_project) {
+        (Some(p), _) => Some(resolve::project(ctx, p)?),
+        (None, true) => None,
+        (None, false) => resolve::default_project(ctx)?,
+    };
     let task = match (&args.task, &project) {
         (Some(t), Some(p)) => Some(resolve::task(ctx, &p.id, t)?),
         (Some(_), None) => bail!("--task requires --project"),
@@ -43,10 +48,17 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
     }
 
     let entry = ctx.client.create_time_entry(&ctx.workspace_id, &body)?;
+    let mut what = entry.description.bold().to_string();
+    if let Some(p) = &project {
+        what.push_str(&format!(" [{}]", p.name.blue()));
+        if let Some(t) = &task {
+            what.push_str(&format!(" / {}", t.name));
+        }
+    }
     println!(
         "{} Added {} on {} ({} – {}, {})",
         "✓".green().bold(),
-        entry.description.bold(),
+        what,
         fmt_local_date(entry.time_interval.start),
         fmt_local_time(entry.time_interval.start),
         fmt_local_time(entry.time_interval.end.unwrap_or(end)),

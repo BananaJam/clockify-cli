@@ -62,8 +62,6 @@ pub struct TimeEntry {
     pub description: String,
     pub project_id: Option<String>,
     pub task_id: Option<String>,
-    #[serde(default)]
-    pub billable: bool,
     pub time_interval: TimeInterval,
 }
 

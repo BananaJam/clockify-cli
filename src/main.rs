@@ -38,6 +38,8 @@ enum Cmd {
         /// Include archived projects
         #[arg(long)]
         all: bool,
+        #[command(subcommand)]
+        cmd: Option<ProjectsCmd>,
     },
     /// List tasks in a project
     Tasks {
@@ -48,10 +50,13 @@ enum Cmd {
     Start {
         /// What you're working on
         description: String,
-        /// Project name or ID
+        /// Project name or ID (falls back to the default project)
         #[arg(short, long)]
         project: Option<String>,
-        /// Task name or ID (requires --project)
+        /// Create the entry without a project, ignoring the default
+        #[arg(long, conflicts_with = "project")]
+        no_project: bool,
+        /// Task name or ID (requires a project)
         #[arg(short, long)]
         task: Option<String>,
         /// Mark the entry billable
@@ -107,10 +112,13 @@ enum Cmd {
         /// End time, e.g. "12:30"
         #[arg(long)]
         to: String,
-        /// Project name or ID
+        /// Project name or ID (falls back to the default project)
         #[arg(short, long)]
         project: Option<String>,
-        /// Task name or ID (requires --project)
+        /// Create the entry without a project, ignoring the default
+        #[arg(long, conflicts_with = "project")]
+        no_project: bool,
+        /// Task name or ID (requires a project)
         #[arg(short, long)]
         task: Option<String>,
         /// Mark the entry billable
@@ -119,7 +127,7 @@ enum Cmd {
     },
     /// Edit an existing time entry
     Edit {
-        /// Entry ID or unique id suffix (see `clockify log`)
+        /// Entry ID, unique id suffix (see `clockify log`), or '@' for the running timer
         id: String,
         /// New description
         #[arg(short, long)]
@@ -136,7 +144,7 @@ enum Cmd {
     },
     /// Delete a time entry
     Delete {
-        /// Entry ID or unique id suffix (see `clockify log`)
+        /// Entry ID, unique id suffix (see `clockify log`), or '@' for the running timer
         id: String,
         /// Skip the confirmation prompt
         #[arg(short, long)]
@@ -166,6 +174,18 @@ enum AuthCmd {
 }
 
 #[derive(Subcommand)]
+enum ProjectsCmd {
+    /// Show or set the default project for new entries
+    Default {
+        /// Project name or ID (omit to show the current default)
+        project: Option<String>,
+        /// Remove the default project
+        #[arg(long, conflicts_with = "project")]
+        clear: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum WorkspacesCmd {
     /// Switch the default workspace
     Switch {
@@ -186,12 +206,17 @@ fn run() -> Result<()> {
         Cmd::Workspaces { cmd: Some(WorkspacesCmd::Switch { workspace }) } => {
             commands::workspaces::switch(&Ctx::load()?, &workspace)
         }
-        Cmd::Projects { all } => commands::projects::run(&Ctx::load()?, all),
+        Cmd::Projects { all, cmd: None } => commands::projects::run(&Ctx::load()?, all),
+        Cmd::Projects { cmd: Some(ProjectsCmd::Default { project, clear }), .. } => {
+            commands::projects::default(&Ctx::load()?, project.as_deref(), clear)
+        }
         Cmd::Tasks { project } => commands::tasks::run(&Ctx::load()?, &project),
-        Cmd::Start { description, project, task, billable, at } => commands::start::run(
-            &Ctx::load()?,
-            commands::start::Args { description, project, task, billable, at },
-        ),
+        Cmd::Start { description, project, no_project, task, billable, at } => {
+            commands::start::run(
+                &Ctx::load()?,
+                commands::start::Args { description, project, no_project, task, billable, at },
+            )
+        }
         Cmd::Stop { at } => commands::stop::run(&Ctx::load()?, at),
         Cmd::Discard { yes } => commands::discard::run(&Ctx::load()?, yes),
         Cmd::Status { short: true } => {
@@ -204,10 +229,12 @@ fn run() -> Result<()> {
             &Ctx::load()?,
             commands::log::Args { week, from, to, limit },
         ),
-        Cmd::Add { description, from, to, project, task, billable } => commands::add::run(
-            &Ctx::load()?,
-            commands::add::Args { description, from, to, project, task, billable },
-        ),
+        Cmd::Add { description, from, to, project, no_project, task, billable } => {
+            commands::add::run(
+                &Ctx::load()?,
+                commands::add::Args { description, from, to, project, no_project, task, billable },
+            )
+        }
         Cmd::Edit { id, description, project, from, to } => commands::edit::run(
             &Ctx::load()?,
             commands::edit::Args { id, description, project, from, to },

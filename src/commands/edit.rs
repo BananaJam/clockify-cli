@@ -35,18 +35,27 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         bail!("the entry would end before it starts");
     }
 
-    let project_id = match &args.project {
-        Some(p) => Some(resolve::project(ctx, p)?.id),
+    let new_project = args.project.as_deref().map(|p| resolve::project(ctx, p)).transpose()?;
+    let project_id = match &new_project {
+        Some(p) => Some(p.id.clone()),
         None => existing.project_id.clone(),
     };
     let description = args.description.as_ref().unwrap_or(&existing.description);
 
-    // PUT replaces the entry, so send the merged state of every field.
+    // PUT replaces the entry, so send the merged state of every field —
+    // except `billable`: Clockify resets it to the project default on a project
+    // change and rejects any other value when the user can't override
+    // billability, so send the new project's default then and omit it
+    // otherwise (omitted, it stays as-is).
     let mut body = json!({
         "start": to_api(start),
         "description": description,
-        "billable": existing.billable,
     });
+    if let Some(p) = &new_project
+        && Some(&p.id) != existing.project_id.as_ref()
+    {
+        body["billable"] = json!(p.billable);
+    }
     if let Some(end) = end {
         body["end"] = json!(to_api(end));
     }

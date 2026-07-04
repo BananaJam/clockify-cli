@@ -2,8 +2,9 @@ use anyhow::Result;
 use colored::Colorize;
 
 use super::in_project_color;
-use crate::config::Ctx;
+use crate::config::{Config, Ctx, DefaultProject};
 use crate::models::Project;
+use crate::resolve;
 
 pub fn run(ctx: &Ctx, all: bool) -> Result<()> {
     let mut projects = ctx.client.projects(&ctx.workspace_id)?;
@@ -38,6 +39,9 @@ pub fn run(ctx: &Ctx, all: bool) -> Result<()> {
         );
         for p in group {
             let mut flags = Vec::new();
+            if ctx.default_project.as_ref().is_some_and(|d| d.id == p.id) {
+                flags.push("default");
+            }
             if !p.billable {
                 flags.push("not billable");
             }
@@ -58,5 +62,47 @@ pub fn run(ctx: &Ctx, all: bool) -> Result<()> {
         }
         println!();
     }
+    Ok(())
+}
+
+/// Show, set, or clear the workspace's default project.
+pub fn default(ctx: &Ctx, project: Option<&str>, clear: bool) -> Result<()> {
+    if clear {
+        let mut cfg = Config::load()?;
+        match cfg.default_projects.remove(&ctx.workspace_id) {
+            Some(old) => {
+                cfg.save()?;
+                println!("{} Cleared the default project (was {}).", "✓".green().bold(), old.name.bold());
+            }
+            None => println!("No default project was set."),
+        }
+        return Ok(());
+    }
+
+    let Some(needle) = project else {
+        match &ctx.default_project {
+            Some(d) => println!(
+                "Default project: {}  {}",
+                d.name.bold(),
+                d.id.dimmed()
+            ),
+            None => println!(
+                "No default project set — set one with {}.",
+                "clockify projects default <project>".bold()
+            ),
+        }
+        return Ok(());
+    };
+
+    let p = resolve::project(ctx, needle)?;
+    let mut cfg = Config::load()?;
+    cfg.default_projects
+        .insert(ctx.workspace_id.clone(), DefaultProject { id: p.id.clone(), name: p.name.clone() });
+    cfg.save()?;
+    println!(
+        "{} New entries now default to {}.",
+        "✓".green().bold(),
+        in_project_color(&p.name, Some(&p))
+    );
     Ok(())
 }

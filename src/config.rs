@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::path::PathBuf;
@@ -7,6 +8,13 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::api;
+
+/// A project used for new entries when none is given, keyed per workspace.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefaultProject {
+    pub id: String,
+    pub name: String,
+}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Config {
@@ -26,6 +34,9 @@ pub struct Config {
     /// TUI color theme (see src/tui/theme.rs).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// Default project per workspace id.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub default_projects: HashMap<String, DefaultProject>,
 }
 
 fn config_file(xdg_config_home: Option<OsString>, home: Option<PathBuf>) -> Result<PathBuf> {
@@ -159,6 +170,8 @@ pub struct Ctx {
     pub client: api::Client,
     pub workspace_id: String,
     pub user_id: String,
+    /// The configured default project for the current workspace, if any.
+    pub default_project: Option<DefaultProject>,
 }
 
 impl Ctx {
@@ -188,8 +201,9 @@ impl Ctx {
             .user_id
             .clone()
             .context("no user configured — run `clockify auth`")?;
+        let default_project = cfg.default_projects.get(&workspace_id).cloned();
 
-        Ok(Ctx { client, workspace_id, user_id })
+        Ok(Ctx { client, workspace_id, user_id, default_project })
     }
 }
 
