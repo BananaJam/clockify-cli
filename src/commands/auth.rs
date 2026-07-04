@@ -1,10 +1,10 @@
 use anyhow::{Context, Result, bail};
 use colored::Colorize;
 use dialoguer::theme::ColorfulTheme;
-use dialoguer::{Confirm, Password, Select};
+use dialoguer::{Confirm, Input, Password, Select};
 
 use crate::api;
-use crate::config::Config;
+use crate::config::{Config, api_key_from_env, op_available, op_read};
 use crate::models::User;
 
 fn mask(key: &str) -> String {
@@ -13,6 +13,11 @@ fn mask(key: &str) -> String {
     } else {
         format!("{}…{}", &key[..4], &key[key.len() - 4..])
     }
+}
+
+enum KeySource {
+    Plain(String),
+    OnePassword(String),
 }
 
 pub fn wizard() -> Result<()> {
@@ -27,7 +32,7 @@ pub fn wizard() -> Result<()> {
     println!("  3. Click {} and copy the key", "Generate".bold());
     println!();
 
-    if cfg.api_key.is_some() {
+    if cfg.api_key.is_some() || cfg.api_key_ref.is_some() {
         let overwrite = Confirm::with_theme(&theme)
             .with_prompt(format!(
                 "You're already set up as {} — replace the existing credentials?",
@@ -41,7 +46,15 @@ pub fn wizard() -> Result<()> {
         }
     }
 
-    let (client, user, key) = prompt_for_key(&theme)?;
+    let choice = Select::with_theme(&theme)
+        .with_prompt("How do you want to provide the API key?")
+        .items(["Paste it manually", "Read it from 1Password (via the op CLI)"])
+        .default(0)
+        .interact()?;
+    let (client, user, source) = match choice {
+        0 => prompt_for_key(&theme)?,
+        _ => prompt_for_op_ref(&theme)?,
+    };
     println!("{} Hi, {} ({})!", "✓".green().bold(), user.name.bold(), user.email);
 
     let workspaces = client.workspaces()?;
@@ -67,7 +80,16 @@ pub fn wizard() -> Result<()> {
         }
     };
 
-    cfg.api_key = Some(key);
+    match source {
+        KeySource::Plain(key) => {
+            cfg.api_key = Some(key);
+            cfg.api_key_ref = None;
+        }
+        KeySource::OnePassword(reference) => {
+            cfg.api_key_ref = Some(reference);
+            cfg.api_key = None;
+        }
+    }
     cfg.user_id = Some(user.id);
     cfg.user_name = Some(user.name);
     cfg.workspace_id = Some(workspace.id);
@@ -76,6 +98,9 @@ pub fn wizard() -> Result<()> {
 
     println!();
     println!("{} You're all set! Config saved to {}", "✓".green().bold(), Config::path()?.display());
+    if cfg.api_key_ref.is_some() {
+        println!("  Your API key stays in 1Password — only the reference is stored on disk.");
+    }
     println!();
     println!("Try these next:");
     println!("  {}   list your projects", "clockify projects".cyan());
@@ -84,7 +109,7 @@ pub fn wizard() -> Result<()> {
     Ok(())
 }
 
-fn prompt_for_key(theme: &ColorfulTheme) -> Result<(api::Client, User, String)> {
+fn prompt_for_key(theme: &ColorfulTheme) -> Result<(api::Client, User, KeySource)> {
     for attempt in 1..=3 {
         let key: String = Password::with_theme(theme)
             .with_prompt("Paste your API key (input is hidden)")
@@ -97,7 +122,7 @@ fn prompt_for_key(theme: &ColorfulTheme) -> Result<(api::Client, User, String)> 
         }
         let client = api::Client::new(key.clone())?;
         match client.current_user() {
-            Ok(user) => return Ok((client, user, key)),
+            Ok(user) => return Ok((client, user, KeySource::Plain(key))),
             Err(e) if attempt < 3 => {
                 eprintln!("{} That key didn't work ({e}). Let's try again.", "✗".red());
             }
@@ -107,18 +132,62 @@ fn prompt_for_key(theme: &ColorfulTheme) -> Result<(api::Client, User, String)> 
     unreachable!("loop either returns or errors on the last attempt")
 }
 
+fn prompt_for_op_ref(theme: &ColorfulTheme) -> Result<(api::Client, User, KeySource)> {
+    let version = op_available()?;
+    println!("Found the 1Password CLI (v{version}).");
+    println!(
+        "Save your API key in 1Password first, then copy its {}:",
+        "secret reference".bold()
+    );
+    println!("  in the 1Password app, click the field's dropdown → {}", "Copy Secret Reference".bold());
+    for attempt in 1..=3 {
+        let reference: String = Input::with_theme(theme)
+            .with_prompt("Secret reference (op://Vault/Item/field)")
+            .validate_with(|s: &String| {
+                if s.trim().starts_with("op://") {
+                    Ok(())
+                } else {
+                    Err("a secret reference starts with op://")
+                }
+            })
+            .interact_text()
+            .context("failed to read input — are you running in a real terminal?")?;
+        let reference = reference.trim().to_string();
+        let key = match op_read(&reference) {
+            Ok(key) => key,
+            Err(e) if attempt < 3 => {
+                eprintln!("{} {e:#}. Let's try again.", "✗".red());
+                continue;
+            }
+            Err(e) => return Err(e.context("could not read the key from 1Password after 3 attempts")),
+        };
+        let client = api::Client::new(key)?;
+        match client.current_user() {
+            Ok(user) => return Ok((client, user, KeySource::OnePassword(reference))),
+            Err(e) if attempt < 3 => {
+                eprintln!(
+                    "{} 1Password gave us a key, but Clockify rejected it ({e}). Let's try again.",
+                    "✗".red()
+                );
+            }
+            Err(e) => return Err(e.context("could not validate the API key after 3 attempts")),
+        }
+    }
+    unreachable!("loop either returns or errors on the last attempt")
+}
+
 pub fn status() -> Result<()> {
     let cfg = Config::load()?;
-    let from_env = std::env::var("CLOCKIFY_API_KEY").is_ok_and(|k| !k.trim().is_empty());
-    let Some(key) = cfg.resolve_api_key() else {
+    if let Some(key) = api_key_from_env() {
+        println!("API key:   {} (from CLOCKIFY_API_KEY)", mask(&key));
+    } else if let Some(reference) = &cfg.api_key_ref {
+        println!("API key:   from 1Password ({reference})");
+    } else if let Some(key) = &cfg.api_key {
+        println!("API key:   {} (stored in the config file)", mask(key));
+    } else {
         println!("Not authenticated — run {} to get started.", "clockify auth".cyan());
         return Ok(());
-    };
-    println!(
-        "API key:   {}{}",
-        mask(&key),
-        if from_env { " (from CLOCKIFY_API_KEY)" } else { "" }
-    );
+    }
     if let Some(name) = &cfg.user_name {
         println!("User:      {name}");
     }
