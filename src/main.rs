@@ -4,6 +4,7 @@ mod config;
 mod models;
 mod resolve;
 mod time;
+mod tui;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -13,9 +14,10 @@ use config::Ctx;
 
 #[derive(Parser)]
 #[command(name = "clockify", version, about = "Track your work time in Clockify")]
+#[command(after_help = "Running without a command opens the interactive TUI.")]
 struct Cli {
     #[command(subcommand)]
-    cmd: Cmd,
+    cmd: Option<Cmd>,
 }
 
 #[derive(Subcommand)]
@@ -169,7 +171,10 @@ enum WorkspacesCmd {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
-    match cli.cmd {
+    let Some(cmd) = cli.cmd else {
+        return tui::run();
+    };
+    match cmd {
         Cmd::Auth { cmd: None } => commands::auth::wizard(),
         Cmd::Auth { cmd: Some(AuthCmd::Status) } => commands::auth::status(),
         Cmd::Workspaces { cmd: None } => commands::workspaces::list(&Ctx::load()?),
