@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod models;
 mod resolve;
+mod status_cache;
 mod time;
 mod tui;
 
@@ -73,7 +74,11 @@ enum Cmd {
         yes: bool,
     },
     /// Show the currently running timer
-    Status,
+    Status {
+        /// One-line cached output for shell prompts (empty when idle)
+        #[arg(long)]
+        short: bool,
+    },
     /// List time entries (default: today)
     Log {
         /// Only today's entries (the default)
@@ -189,7 +194,11 @@ fn run() -> Result<()> {
         ),
         Cmd::Stop { at } => commands::stop::run(&Ctx::load()?, at),
         Cmd::Discard { yes } => commands::discard::run(&Ctx::load()?, yes),
-        Cmd::Status => commands::status::run(&Ctx::load()?),
+        Cmd::Status { short: true } => {
+            commands::status::short();
+            Ok(())
+        }
+        Cmd::Status { short: false } => commands::status::run(&Ctx::load()?),
         // `today` is the default range; the flag exists only for explicitness.
         Cmd::Log { today: _, week, from, to, limit } => commands::log::run(
             &Ctx::load()?,
