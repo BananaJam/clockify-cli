@@ -1,3 +1,5 @@
+use std::io::IsTerminal;
+
 use anyhow::{Context, Result, bail};
 use colored::Colorize;
 use dialoguer::theme::ColorfulTheme;
@@ -21,6 +23,12 @@ enum KeySource {
 }
 
 pub fn wizard() -> Result<()> {
+    if !std::io::stdin().is_terminal() {
+        bail!(
+            "`clockify auth` is an interactive wizard and needs a terminal — \
+             run it yourself, or set the CLOCKIFY_API_KEY environment variable"
+        );
+    }
     let theme = ColorfulTheme::default();
     let mut cfg = Config::load()?;
 

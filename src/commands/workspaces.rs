@@ -2,9 +2,26 @@ use anyhow::{Result, bail};
 use colored::Colorize;
 
 use crate::config::{Config, Ctx};
+use crate::output;
 
-pub fn list(ctx: &Ctx) -> Result<()> {
+pub fn list(ctx: &Ctx, json: bool) -> Result<()> {
     let workspaces = ctx.client.workspaces()?;
+
+    if json {
+        let list: Vec<_> = workspaces
+            .iter()
+            .map(|w| {
+                serde_json::json!({
+                    "id": w.id,
+                    "name": w.name,
+                    "current": w.id == ctx.workspace_id,
+                })
+            })
+            .collect();
+        output::print(&serde_json::Value::Array(list));
+        return Ok(());
+    }
+
     let name_w = workspaces.iter().map(|w| w.name.chars().count()).max().unwrap_or(0);
     for w in &workspaces {
         let current = w.id == ctx.workspace_id;

@@ -5,6 +5,7 @@ use colored::Colorize;
 use super::{in_project_color, project_map, styled_id};
 use crate::config::Ctx;
 use crate::models::TimeEntry;
+use crate::output;
 use crate::resolve;
 use crate::time::{day_range, fmt_duration, fmt_local_time, parse_date};
 
@@ -13,6 +14,7 @@ pub struct Args {
     pub from: Option<String>,
     pub to: Option<String>,
     pub limit: Option<usize>,
+    pub json: bool,
 }
 
 pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
@@ -35,7 +37,11 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         .client
         .time_entries(&ctx.workspace_id, &ctx.user_id, start, end, args.limit)?;
     if entries.is_empty() {
-        println!("No time entries between {from} and {to}.");
+        if args.json {
+            output::print(&serde_json::json!([]));
+        } else {
+            println!("No time entries between {from} and {to}.");
+        }
         return Ok(());
     }
     // The API returns newest first; show oldest first.
@@ -43,6 +49,12 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
 
     let projects = project_map(ctx)?;
     let project_of = |e: &TimeEntry| e.project_id.as_deref().and_then(|id| projects.get(id));
+
+    if args.json {
+        let list: Vec<_> = entries.iter().map(|e| output::entry_json(e, project_of(e))).collect();
+        output::print(&serde_json::Value::Array(list));
+        return Ok(());
+    }
 
     // Shortest-unique-suffix lengths, computed against the same 90-day set
     // that suffix resolution searches, so a highlighted suffix always works.

@@ -6,12 +6,14 @@ use colored::Colorize;
 
 use super::{in_project_color, project_map};
 use crate::config::Ctx;
+use crate::output;
 use crate::time::{day_range, fmt_duration, parse_date};
 
 pub struct Args {
     pub month: bool,
     pub from: Option<String>,
     pub to: Option<String>,
+    pub json: bool,
 }
 
 const BAR_WIDTH: usize = 24;
@@ -37,7 +39,16 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         .client
         .time_entries(&ctx.workspace_id, &ctx.user_id, start, end, None)?;
     if entries.is_empty() {
-        println!("No time entries between {from} and {to}.");
+        if args.json {
+            output::print(&serde_json::json!({
+                "from": from.to_string(),
+                "to": to.to_string(),
+                "total_seconds": 0,
+                "projects": [],
+            }));
+        } else {
+            println!("No time entries between {from} and {to}.");
+        }
         return Ok(());
     }
 
@@ -51,6 +62,30 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
 
     let mut rows: Vec<(Option<String>, Duration)> = per_project.into_iter().collect();
     rows.sort_by_key(|(_, d)| -d.num_seconds());
+
+    if args.json {
+        let list: Vec<_> = rows
+            .iter()
+            .map(|(id, dur)| {
+                let project = id.as_deref().and_then(|pid| projects.get(pid));
+                serde_json::json!({
+                    "id": id,
+                    "name": project.map(|p| p.name.clone()),
+                    "duration_seconds": dur.num_seconds(),
+                    "percent": 100.0 * dur.num_seconds() as f64
+                        / total.num_seconds().max(1) as f64,
+                })
+            })
+            .collect();
+        output::print(&serde_json::json!({
+            "from": from.to_string(),
+            "to": to.to_string(),
+            "total_seconds": total.num_seconds(),
+            "projects": list,
+        }));
+        return Ok(());
+    }
+
     let max_secs = rows.first().map_or(0, |(_, d)| d.num_seconds()).max(1);
 
     let name_of = |id: &Option<String>| -> String {

@@ -1,14 +1,21 @@
-use anyhow::Result;
+use std::io::IsTerminal;
+
+use anyhow::{Result, bail};
 use colored::Colorize;
 use dialoguer::Confirm;
 use dialoguer::theme::ColorfulTheme;
 
 use crate::config::Ctx;
+use crate::output;
 use crate::time::fmt_duration_secs;
 
-pub fn run(ctx: &Ctx, yes: bool) -> Result<()> {
+pub fn run(ctx: &Ctx, yes: bool, json: bool) -> Result<()> {
     let Some(entry) = ctx.client.running_entry(&ctx.workspace_id, &ctx.user_id)? else {
-        println!("No timer is running.");
+        if json {
+            output::print(&serde_json::Value::Null);
+        } else {
+            println!("No timer is running.");
+        }
         return Ok(());
     };
 
@@ -19,6 +26,9 @@ pub fn run(ctx: &Ctx, yes: bool) -> Result<()> {
     };
 
     if !yes {
+        if !std::io::stdin().is_terminal() {
+            bail!("refusing to prompt for confirmation without a terminal — pass -y/--yes");
+        }
         let confirmed = Confirm::with_theme(&ColorfulTheme::default())
             .with_prompt(format!(
                 "Discard the running timer \"{desc}\" ({} elapsed)? The time will not be saved",
@@ -27,16 +37,24 @@ pub fn run(ctx: &Ctx, yes: bool) -> Result<()> {
             .default(false)
             .interact()?;
         if !confirmed {
-            println!("Aborted — the timer keeps running.");
+            if json {
+                output::print(&serde_json::Value::Null);
+            } else {
+                println!("Aborted — the timer keeps running.");
+            }
             return Ok(());
         }
     }
 
     ctx.client.delete_time_entry(&ctx.workspace_id, &entry.id)?;
-    println!(
-        "{} Discarded \"{desc}\" ({} not saved)",
-        "✗".red().bold(),
-        fmt_duration_secs(entry.duration())
-    );
+    if json {
+        output::print(&serde_json::json!({ "discarded": entry.id }));
+    } else {
+        println!(
+            "{} Discarded \"{desc}\" ({} not saved)",
+            "✗".red().bold(),
+            fmt_duration_secs(entry.duration())
+        );
+    }
     Ok(())
 }

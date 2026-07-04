@@ -4,6 +4,7 @@ use colored::Colorize;
 
 use super::short_id;
 use crate::config::{Config, Ctx};
+use crate::output;
 use crate::status_cache::{self, CachedEntry, CachedStatus, TTL_SECS};
 use crate::time::{fmt_duration_secs, fmt_local_time};
 
@@ -66,8 +67,24 @@ fn print_short(entry: Option<&CachedEntry>) {
     }
 }
 
-pub fn run(ctx: &Ctx) -> Result<()> {
-    let Some(entry) = ctx.client.running_entry(&ctx.workspace_id, &ctx.user_id)? else {
+pub fn run(ctx: &Ctx, json: bool) -> Result<()> {
+    let running = ctx.client.running_entry(&ctx.workspace_id, &ctx.user_id)?;
+    if json {
+        let value = match &running {
+            Some(e) => {
+                let project = e
+                    .project_id
+                    .as_deref()
+                    .map(|id| ctx.client.project(&ctx.workspace_id, id))
+                    .transpose()?;
+                output::entry_json(e, project.as_ref())
+            }
+            None => serde_json::Value::Null,
+        };
+        output::print(&value);
+        return Ok(());
+    }
+    let Some(entry) = running else {
         println!("No timer is running. Start one with {}.", "clockify start".cyan());
         return Ok(());
     };

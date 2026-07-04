@@ -4,6 +4,7 @@ use colored::Colorize;
 use serde_json::json;
 
 use crate::config::Ctx;
+use crate::output;
 use crate::resolve;
 use crate::time::{fmt_duration, fmt_local_time, parse_time, to_api};
 
@@ -14,6 +15,7 @@ pub struct Args {
     pub task: Option<String>,
     pub billable: bool,
     pub at: Option<String>,
+    pub json: bool,
 }
 
 pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
@@ -39,12 +41,21 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
 
     // Clockify allows overlapping running entries via the API, so mimic the
     // web app: stop anything already running before starting the new timer.
+    // In JSON mode this note goes to stderr — stdout must stay one document.
     if let Some(stopped) = ctx.client.stop_timer(&ctx.workspace_id, &ctx.user_id, start)? {
-        println!(
-            "Stopped previous timer: {} ({})",
-            stopped.description.italic(),
-            fmt_duration(stopped.duration())
-        );
+        if args.json {
+            eprintln!(
+                "Stopped previous timer: {} ({})",
+                stopped.description,
+                fmt_duration(stopped.duration())
+            );
+        } else {
+            println!(
+                "Stopped previous timer: {} ({})",
+                stopped.description.italic(),
+                fmt_duration(stopped.duration())
+            );
+        }
     }
 
     let mut body = json!({
@@ -60,6 +71,11 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
     }
 
     let entry = ctx.client.create_time_entry(&ctx.workspace_id, &body)?;
+
+    if args.json {
+        output::print(&output::entry_json(&entry, project.as_ref()));
+        return Ok(());
+    }
 
     let mut what = entry.description.bold().to_string();
     if let Some(p) = &project {

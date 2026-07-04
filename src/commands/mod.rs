@@ -6,6 +6,7 @@ pub mod edit;
 pub mod log;
 pub mod projects;
 pub mod report;
+pub mod skill;
 pub mod start;
 pub mod status;
 pub mod stop;

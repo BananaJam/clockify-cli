@@ -3,6 +3,7 @@ use colored::Colorize;
 use serde_json::json;
 
 use crate::config::Ctx;
+use crate::output;
 use crate::resolve;
 use crate::time::{fmt_duration, parse_time, to_api};
 
@@ -12,6 +13,7 @@ pub struct Args {
     pub project: Option<String>,
     pub from: Option<String>,
     pub to: Option<String>,
+    pub json: bool,
 }
 
 pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
@@ -70,6 +72,19 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
     }
 
     let updated = ctx.client.update_time_entry(&ctx.workspace_id, &existing.id, &body)?;
+
+    if args.json {
+        let project = match &updated.project_id {
+            Some(id) => match &new_project {
+                Some(p) if p.id == *id => Some(p.clone()),
+                _ => Some(ctx.client.project(&ctx.workspace_id, id)?),
+            },
+            None => None,
+        };
+        output::print(&output::entry_json(&updated, project.as_ref()));
+        return Ok(());
+    }
+
     println!(
         "{} Updated {} ({})",
         "✓".green().bold(),

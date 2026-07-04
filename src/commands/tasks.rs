@@ -3,11 +3,22 @@ use colored::Colorize;
 
 use super::in_project_color;
 use crate::config::Ctx;
+use crate::output;
 use crate::resolve;
 
-pub fn run(ctx: &Ctx, project: &str) -> Result<()> {
+pub fn run(ctx: &Ctx, project: &str, json: bool) -> Result<()> {
     let project = resolve::project(ctx, project)?;
     let tasks = ctx.client.tasks(&ctx.workspace_id, &project.id)?;
+
+    if json {
+        let list: Vec<_> = tasks
+            .iter()
+            .map(|t| serde_json::json!({ "id": t.id, "name": t.name, "status": t.status }))
+            .collect();
+        output::print(&serde_json::Value::Array(list));
+        return Ok(());
+    }
+
     if tasks.is_empty() {
         println!("Project {} has no tasks.", in_project_color(&project.name, Some(&project)));
         return Ok(());

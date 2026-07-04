@@ -157,6 +157,30 @@ shell = ['sh']
 
 Add `${custom.clockify}` to your `format` string if you use an explicit one.
 
+## Agents
+
+Coding agents are people too, or at least they parse JSON. Every command takes a
+`--json` flag for machine-readable output with a stable shape, `delete` and
+`discard` take `-y` to skip the confirmation prompt, and running `clockify`
+without a terminal prints usage instead of attempting to draw a TUI at a very
+confused subprocess.
+
+If you use Claude Code or Codex, the CLI ships its own skill — a short
+instruction file that teaches the agent the commands, the `@` reference, and
+the JSON shapes. It's the same SKILL.md format either way; only the mailbox
+differs:
+
+```sh
+clockify skill install            # installs for every agent found on this machine
+clockify skill install --codex    # or pick: --claude, --codex
+clockify skill install --project  # into the current repo instead of user-level
+clockify skill show               # read it first, it's short
+```
+
+Claude Code reads it from `~/.claude/skills/`, Codex from `~/.codex/skills/`
+(or `.agents/skills/` inside a repo). After that, saying "start a timer for
+code review" to your agent of choice just works.
+
 ## Files
 
 | Path | What |

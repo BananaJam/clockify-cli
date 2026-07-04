@@ -4,16 +4,36 @@ use colored::Colorize;
 use super::in_project_color;
 use crate::config::{Config, Ctx, DefaultProject};
 use crate::models::Project;
+use crate::output;
 use crate::resolve;
 
-pub fn run(ctx: &Ctx, all: bool) -> Result<()> {
+pub fn run(ctx: &Ctx, all: bool, json: bool) -> Result<()> {
     let mut projects = ctx.client.projects(&ctx.workspace_id)?;
     projects.retain(|p| all || !p.archived);
+    projects.sort_by_key(|p| p.name.to_lowercase());
+
+    if json {
+        let list: Vec<_> = projects
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "id": p.id,
+                    "name": p.name,
+                    "client": p.client_name.as_deref().filter(|c| !c.is_empty()),
+                    "billable": p.billable,
+                    "archived": p.archived,
+                    "default": ctx.default_project.as_ref().is_some_and(|d| d.id == p.id),
+                })
+            })
+            .collect();
+        output::print(&serde_json::Value::Array(list));
+        return Ok(());
+    }
+
     if projects.is_empty() {
         println!("No projects in this workspace{}.", if all { "" } else { " (try --all)" });
         return Ok(());
     }
-    projects.sort_by_key(|p| p.name.to_lowercase());
     let name_w = projects.iter().map(|p| p.name.chars().count()).max().unwrap_or(0);
 
     // Group by client, like log groups by day; clientless projects last.

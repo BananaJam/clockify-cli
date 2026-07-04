@@ -3,6 +3,7 @@ use colored::Colorize;
 use serde_json::json;
 
 use crate::config::Ctx;
+use crate::output;
 use crate::resolve;
 use crate::time::{fmt_duration, fmt_local_date, fmt_local_time, parse_time, to_api};
 
@@ -14,6 +15,7 @@ pub struct Args {
     pub no_project: bool,
     pub task: Option<String>,
     pub billable: bool,
+    pub json: bool,
 }
 
 pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
@@ -48,6 +50,12 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
     }
 
     let entry = ctx.client.create_time_entry(&ctx.workspace_id, &body)?;
+
+    if args.json {
+        output::print(&output::entry_json(&entry, project.as_ref()));
+        return Ok(());
+    }
+
     let mut what = entry.description.bold().to_string();
     if let Some(p) = &project {
         what.push_str(&format!(" [{}]", p.name.blue()));
