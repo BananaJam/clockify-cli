@@ -64,6 +64,12 @@ enum Cmd {
         #[arg(long)]
         at: Option<String>,
     },
+    /// Discard the running timer without saving the time
+    Discard {
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
+    },
     /// Show the currently running timer
     Status,
     /// List time entries (default: today)
@@ -177,6 +183,7 @@ fn run() -> Result<()> {
             commands::start::Args { description, project, task, billable, at },
         ),
         Cmd::Stop { at } => commands::stop::run(&Ctx::load()?, at),
+        Cmd::Discard { yes } => commands::discard::run(&Ctx::load()?, yes),
         Cmd::Status => commands::status::run(&Ctx::load()?),
         // `today` is the default range; the flag exists only for explicitness.
         Cmd::Log { today: _, week, from, to, limit } => commands::log::run(
