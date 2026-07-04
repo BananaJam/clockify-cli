@@ -30,20 +30,9 @@ pub fn project_map(ctx: &Ctx) -> Result<HashMap<String, Project>> {
         .collect())
 }
 
-fn hex_rgb(hex: &str) -> Option<(u8, u8, u8)> {
-    let hex = hex.strip_prefix('#')?;
-    if hex.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some((r, g, b))
-}
-
 /// Render text in a project's Clockify color (falls back to blue).
 pub fn in_project_color(text: &str, project: Option<&Project>) -> ColoredString {
-    match project.and_then(|p| p.color.as_deref()).and_then(hex_rgb) {
+    match project.and_then(Project::rgb) {
         Some((r, g, b)) => text.truecolor(r, g, b),
         None => text.blue(),
     }

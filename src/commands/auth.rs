@@ -132,6 +132,17 @@ fn prompt_for_key(theme: &ColorfulTheme) -> Result<(api::Client, User, KeySource
     unreachable!("loop either returns or errors on the last attempt")
 }
 
+/// `op` copies secret references to the clipboard wrapped in quotes —
+/// accept them quoted or bare.
+fn unquote(s: &str) -> &str {
+    let s = s.trim();
+    s.strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .or_else(|| s.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
+        .map(str::trim)
+        .unwrap_or(s)
+}
+
 fn prompt_for_op_ref(theme: &ColorfulTheme) -> Result<(api::Client, User, KeySource)> {
     let version = op_available()?;
     println!("Found the 1Password CLI (v{version}).");
@@ -144,7 +155,7 @@ fn prompt_for_op_ref(theme: &ColorfulTheme) -> Result<(api::Client, User, KeySou
         let reference: String = Input::with_theme(theme)
             .with_prompt("Secret reference (op://Vault/Item/field)")
             .validate_with(|s: &String| {
-                if s.trim().starts_with("op://") {
+                if unquote(s).starts_with("op://") {
                     Ok(())
                 } else {
                     Err("a secret reference starts with op://")
@@ -152,7 +163,7 @@ fn prompt_for_op_ref(theme: &ColorfulTheme) -> Result<(api::Client, User, KeySou
             })
             .interact_text()
             .context("failed to read input — are you running in a real terminal?")?;
-        let reference = reference.trim().to_string();
+        let reference = unquote(&reference).to_string();
         let key = match op_read(&reference) {
             Ok(key) => key,
             Err(e) if attempt < 3 => {
@@ -197,4 +208,19 @@ pub fn status() -> Result<()> {
         _ => println!("Workspace: not set — run {}", "clockify auth".cyan()),
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unquote;
+
+    #[test]
+    fn unquotes_references() {
+        assert_eq!(unquote("op://V/I/f"), "op://V/I/f");
+        assert_eq!(unquote("\"op://V/I/f\""), "op://V/I/f");
+        assert_eq!(unquote("'op://V/I/f'"), "op://V/I/f");
+        assert_eq!(unquote("  \"op://V/I/f\"  "), "op://V/I/f");
+        // Unbalanced quotes are left alone rather than mangled.
+        assert_eq!(unquote("\"op://V/I/f"), "\"op://V/I/f");
+    }
 }

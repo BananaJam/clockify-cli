@@ -23,6 +23,9 @@ pub struct Config {
     pub user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_name: Option<String>,
+    /// TUI color theme (see src/tui/theme.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
 }
 
 fn config_file(xdg_config_home: Option<OsString>, home: Option<PathBuf>) -> Result<PathBuf> {

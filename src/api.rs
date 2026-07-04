@@ -11,6 +11,7 @@ use crate::time::{to_api, to_api_query};
 const BASE: &str = "https://api.clockify.me/api/v1";
 const PAGE_SIZE: usize = 200;
 
+#[derive(Clone)]
 pub struct Client {
     http: HttpClient,
     api_key: String,
