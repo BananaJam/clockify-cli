@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use chrono::{Datelike, Days, Duration, Local};
 use colored::Colorize;
 
-use super::{project_map, table};
+use super::{in_project_color, project_map};
 use crate::config::Ctx;
 use crate::time::{day_range, fmt_duration, parse_date};
 
@@ -13,6 +13,8 @@ pub struct Args {
     pub from: Option<String>,
     pub to: Option<String>,
 }
+
+const BAR_WIDTH: usize = 24;
 
 pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
     let today = Local::now().date_naive();
@@ -40,32 +42,47 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
     }
 
     let projects = project_map(ctx)?;
-    let mut per_project: HashMap<String, Duration> = HashMap::new();
+    let mut per_project: HashMap<Option<String>, Duration> = HashMap::new();
     let mut total = Duration::zero();
     for e in &entries {
-        let key = e
-            .project_id
-            .as_deref()
-            .map(|id| projects.get(id).map_or_else(|| id.to_string(), |p| p.name.clone()))
-            .unwrap_or_else(|| "(no project)".to_string());
-        *per_project.entry(key).or_insert_with(Duration::zero) += e.duration();
+        *per_project.entry(e.project_id.clone()).or_insert_with(Duration::zero) += e.duration();
         total += e.duration();
     }
 
-    let mut rows: Vec<(String, Duration)> = per_project.into_iter().collect();
+    let mut rows: Vec<(Option<String>, Duration)> = per_project.into_iter().collect();
     rows.sort_by_key(|(_, d)| -d.num_seconds());
+    let max_secs = rows.first().map_or(0, |(_, d)| d.num_seconds()).max(1);
 
-    println!("Report {from} – {to}");
-    let mut t = table(&["Project", "Time", "Share"]);
-    for (project, dur) in &rows {
-        let share = if total.num_seconds() > 0 {
-            format!("{:.0}%", 100.0 * dur.num_seconds() as f64 / total.num_seconds() as f64)
+    let name_of = |id: &Option<String>| -> String {
+        id.as_deref()
+            .map(|id| projects.get(id).map_or_else(|| id.to_string(), |p| p.name.clone()))
+            .unwrap_or_else(|| "(no project)".to_string())
+    };
+    let name_w = rows.iter().map(|(id, _)| name_of(id).chars().count()).max().unwrap_or(0);
+    let dur_w = rows.iter().map(|(_, d)| fmt_duration(*d).len()).max().unwrap_or(0);
+
+    println!("{}  {}", format!("Report {from} – {to}").bold(), format!("· {}", fmt_duration(total)).yellow());
+    for (id, dur) in &rows {
+        let project = id.as_deref().and_then(|id| projects.get(id));
+        let name = format!("{:<name_w$}", name_of(id));
+        let name = if project.is_some() {
+            in_project_color(&name, project)
         } else {
-            String::new()
+            name.dimmed()
         };
-        t.add_row(vec![project.clone(), fmt_duration(*dur), share]);
+        let share = 100.0 * dur.num_seconds() as f64 / total.num_seconds().max(1) as f64;
+        let bar_len = ((dur.num_seconds() as f64 / max_secs as f64) * BAR_WIDTH as f64)
+            .round()
+            .max(1.0) as usize;
+        let bar = "█".repeat(bar_len);
+        let bar = if project.is_some() { in_project_color(&bar, project) } else { bar.dimmed() };
+        println!(
+            "  {name}  {:>dur_w$}  {:>4}  {bar}",
+            fmt_duration(*dur).bold(),
+            format!("{share:.0}%").yellow(),
+        );
     }
-    println!("{t}");
-    println!("Total: {} across {} entries", fmt_duration(total).bold(), entries.len());
+    println!();
+    println!("{} entries, total {}", entries.len(), fmt_duration(total).bold());
     Ok(())
 }

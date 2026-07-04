@@ -16,18 +16,9 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use colored::{ColoredString, Colorize};
-use comfy_table::{ContentArrangement, Table, presets};
 
 use crate::config::Ctx;
 use crate::models::Project;
-
-pub fn table(headers: &[&str]) -> Table {
-    let mut t = Table::new();
-    t.load_preset(presets::UTF8_FULL_CONDENSED)
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(headers.to_vec());
-    t
-}
 
 /// Map of project id -> project for the current workspace.
 pub fn project_map(ctx: &Ctx) -> Result<HashMap<String, Project>> {
