@@ -110,7 +110,9 @@ impl Client {
         let req = self
             .request(reqwest::Method::POST, &format!("/workspaces/{ws}/time-entries"))
             .json(body);
-        self.send(req)?.json().context("failed to parse the created time entry")
+        let entry = self.send(req)?.json().context("failed to parse the created time entry")?;
+        crate::status_cache::invalidate();
+        Ok(entry)
     }
 
     /// Stop the currently running timer. Returns None when no timer is running.
@@ -126,7 +128,9 @@ impl Client {
         if resp.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
-        Ok(Some(check(resp)?.json().context("failed to parse the stopped time entry")?))
+        let entry = check(resp)?.json().context("failed to parse the stopped time entry")?;
+        crate::status_cache::invalidate();
+        Ok(Some(entry))
     }
 
     pub fn running_entry(&self, ws: &str, user: &str) -> Result<Option<TimeEntry>> {
@@ -160,7 +164,9 @@ impl Client {
         let req = self
             .request(reqwest::Method::PUT, &format!("/workspaces/{ws}/time-entries/{id}"))
             .json(body);
-        self.send(req)?.json().context("failed to parse the updated time entry")
+        let entry = self.send(req)?.json().context("failed to parse the updated time entry")?;
+        crate::status_cache::invalidate();
+        Ok(entry)
     }
 
     pub fn delete_time_entry(&self, ws: &str, id: &str) -> Result<()> {
@@ -169,6 +175,7 @@ impl Client {
             &format!("/workspaces/{ws}/time-entries/{id}"),
         );
         self.send(req)?;
+        crate::status_cache::invalidate();
         Ok(())
     }
 }
