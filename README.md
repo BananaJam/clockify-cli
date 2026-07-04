@@ -1,4 +1,4 @@
-# clockify
+# Clockify CLI
 
 A fast, pretty, terminal-native client for [Clockify](https://clockify.me) time tracking.
 One binary, one config file, zero bundled Chromiums.
