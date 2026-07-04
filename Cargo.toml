@@ -1,6 +1,6 @@
 [package]
 name = "clockify-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A fast terminal client for Clockify time tracking — CLI, TUI, and prompt integration"
 repository = "https://github.com/BananaJam/clockify-cli"
