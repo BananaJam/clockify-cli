@@ -5,14 +5,6 @@ One binary, one config file, zero bundled Chromiums.
 
 ![clockify in a terminal: start a timer, stop it, browse the log, edit and delete an entry by its short id](assets/demo.png)
 
-Yes, it's written in Rust. We know. Every terminal tool is written in Rust now — it's
-practically a legal requirement. But consider the alternative: the official desktop
-time tracker is an Electron app, which means that somewhere out there a computer is
-running an entire web browser, a JavaScript runtime, and a good chunk of an operating
-system's worth of abstraction... to display a stopwatch. This program starts a timer
-using roughly the same amount of RAM that an Electron app uses to think about
-starting. It is, as tradition demands, blazingly fast.
-
 ## What you get
 
 - A complete CLI: start, stop, and discard timers, add and edit entries, browse
@@ -150,7 +142,7 @@ changes made elsewhere show up within two minutes.
 command_timeout = 2000
 
 [custom.clockify]
-style = 'green'
+style = 'teal'
 format = '[$output]($style) '
 command = 'clockify status --short'
 when = 'test -n "$(clockify status --short)"'
@@ -191,17 +183,6 @@ code review" to your agent of choice just works.
 | `~/.cache/clockify/status.json` | Prompt status cache. Safe to delete at any time. |
 
 Both honor `XDG_CONFIG_HOME` / `XDG_CACHE_HOME`.
-
-## Caveats, stated honestly
-
-- The CLI assumes your machine's timezone matches your Clockify profile timezone.
-  (Fun fact discovered along the way: the Clockify API interprets query-parameter
-  timestamps in your profile timezone while ignoring the `Z` suffix, but stores
-  entry timestamps in actual UTC. This program compensates. You're welcome.)
-- Some workspaces require a project on every entry — that's a workspace setting,
-  and the API will tell you about it, politely relayed.
-- Short-suffix resolution looks at your last 90 days of entries. Older entries
-  want their full id.
 
 ## Development
 
