@@ -27,11 +27,23 @@ starting. It is, as tradition demands, blazingly fast.
 
 ## Install
 
+Homebrew (macOS and Linux):
+
 ```sh
-cargo install --path .
+brew tap bananajam/tap
+brew install clockify-cli
 ```
 
-The binary is called `clockify`. Requires Rust 1.85+ (edition 2024).
+Or from source:
+
+```sh
+cargo install --path .   # requires Rust 1.85+ (edition 2024)
+```
+
+Either way the binary is called `clockify`.
+
+This is an unofficial client and is not affiliated with or endorsed by
+Clockify or CAKE.com — it just speaks their public API, politely.
 
 ## Setup
 
