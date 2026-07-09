@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use super::in_project_color;
+use super::{in_project_color, styled_id};
 use crate::config::Ctx;
 use crate::output;
 use crate::resolve;
@@ -31,6 +31,7 @@ pub fn run(ctx: &Ctx, project: &str, json: bool) -> Result<()> {
         .map(|t| t.name.chars().count())
         .max()
         .unwrap_or(0);
+    let id_lens = resolve::unique_suffix_lens(tasks.iter().map(|t| t.id.as_str()));
     println!(
         "{}  {}",
         in_project_color(&project.name, Some(&project)).bold(),
@@ -52,7 +53,7 @@ pub fn run(ctx: &Ctx, project: &str, json: bool) -> Result<()> {
             "  {:<name_w$}  {:<8}  {}",
             task.name,
             status,
-            task.id.dimmed()
+            styled_id(&task.id, id_lens.get(&task.id).copied().unwrap_or(6))
         );
     }
     Ok(())

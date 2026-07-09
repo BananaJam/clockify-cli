@@ -49,20 +49,20 @@ enum Cmd {
     },
     /// List tasks in a project
     Tasks {
-        /// Project name or ID
+        /// Project name, ID, or unique id suffix
         project: String,
     },
     /// Start a timer (stops any already-running one)
     Start {
         /// What you're working on
         description: String,
-        /// Project name or ID (falls back to the default project)
+        /// Project name, ID, or unique id suffix (falls back to the default project)
         #[arg(short, long)]
         project: Option<String>,
         /// Create the entry without a project, ignoring the default
         #[arg(long, conflicts_with = "project")]
         no_project: bool,
-        /// Task name or ID (requires a project)
+        /// Task name, ID, or unique id suffix (requires a project)
         #[arg(short, long)]
         task: Option<String>,
         /// Mark the entry billable
@@ -118,13 +118,13 @@ enum Cmd {
         /// End time, e.g. "12:30"
         #[arg(long)]
         to: String,
-        /// Project name or ID (falls back to the default project)
+        /// Project name, ID, or unique id suffix (falls back to the default project)
         #[arg(short, long)]
         project: Option<String>,
         /// Create the entry without a project, ignoring the default
         #[arg(long, conflicts_with = "project")]
         no_project: bool,
-        /// Task name or ID (requires a project)
+        /// Task name, ID, or unique id suffix (requires a project)
         #[arg(short, long)]
         task: Option<String>,
         /// Mark the entry billable
@@ -138,7 +138,7 @@ enum Cmd {
         /// New description
         #[arg(short, long)]
         description: Option<String>,
-        /// New project name or ID
+        /// New project name, ID, or unique id suffix
         #[arg(short, long)]
         project: Option<String>,
         /// New start time
@@ -250,7 +250,7 @@ enum AuthCmd {
 enum ProjectsCmd {
     /// Show or set the default project for new entries
     Default {
-        /// Project name or ID (omit to show the current default)
+        /// Project name, ID, or unique id suffix (omit to show the current default)
         project: Option<String>,
         /// Remove the default project
         #[arg(long, conflicts_with = "project")]
@@ -262,7 +262,7 @@ enum ProjectsCmd {
 enum WorkspacesCmd {
     /// Switch the default workspace
     Switch {
-        /// Workspace name or ID
+        /// Workspace name, ID, or unique id suffix
         workspace: String,
     },
 }
@@ -280,16 +280,16 @@ enum ExpensesCmd {
         /// Expense amount in USD, e.g. 12.50
         #[arg(long)]
         amount: f64,
-        /// Expense category name or ID
+        /// Expense category name, ID, or unique id suffix
         #[arg(long)]
         category: String,
         /// Expense date: YYYY-MM-DD, "today", or "yesterday"
         #[arg(long)]
         date: String,
-        /// Project name or ID
+        /// Project name, ID, or unique id suffix
         #[arg(short, long)]
         project: String,
-        /// Task name or ID
+        /// Task name, ID, or unique id suffix
         #[arg(short, long)]
         task: Option<String>,
         /// Expense notes
@@ -314,16 +314,16 @@ enum ExpensesCmd {
         /// New amount in USD, e.g. 12.50
         #[arg(long)]
         amount: Option<f64>,
-        /// New expense category name or ID
+        /// New expense category name, ID, or unique id suffix
         #[arg(long)]
         category: Option<String>,
         /// New expense date: YYYY-MM-DD, "today", or "yesterday"
         #[arg(long)]
         date: Option<String>,
-        /// New project name or ID
+        /// New project name, ID, or unique id suffix
         #[arg(short, long)]
         project: Option<String>,
-        /// New task name or ID
+        /// New task name, ID, or unique id suffix
         #[arg(short, long)]
         task: Option<String>,
         /// New notes; pass an empty string to clear

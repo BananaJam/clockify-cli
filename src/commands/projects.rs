@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use super::in_project_color;
+use super::{in_project_color, short_id, styled_id};
 use crate::config::{Config, Ctx, DefaultProject};
 use crate::models::Project;
 use crate::output;
@@ -42,6 +42,7 @@ pub fn run(ctx: &Ctx, all: bool, json: bool) -> Result<()> {
         .map(|p| p.name.chars().count())
         .max()
         .unwrap_or(0);
+    let id_lens = resolve::unique_suffix_lens(projects.iter().map(|p| p.id.as_str()));
 
     // Group by client, like log groups by day; clientless projects last.
     let mut groups: Vec<(String, Vec<&Project>)> = Vec::new();
@@ -90,7 +91,7 @@ pub fn run(ctx: &Ctx, all: bool, json: bool) -> Result<()> {
                 "  {}{}  {}",
                 in_project_color(&format!("{:<name_w$}", p.name), Some(p)),
                 flags.dimmed(),
-                p.id.dimmed()
+                styled_id(&p.id, id_lens.get(&p.id).copied().unwrap_or(6))
             );
         }
         println!();
@@ -118,7 +119,7 @@ pub fn default(ctx: &Ctx, project: Option<&str>, clear: bool) -> Result<()> {
 
     let Some(needle) = project else {
         match &ctx.default_project {
-            Some(d) => println!("Default project: {}  {}", d.name.bold(), d.id.dimmed()),
+            Some(d) => println!("Default project: {}  {}", d.name.bold(), short_id(&d.id)),
             None => println!(
                 "No default project set — set one with {}.",
                 "clockify projects default <project>".bold()

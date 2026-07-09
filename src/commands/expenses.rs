@@ -123,6 +123,8 @@ pub fn categories(ctx: &Ctx, all: bool, as_json: bool) -> Result<()> {
         println!("No expense categories found.");
         return Ok(());
     }
+    let id_lens =
+        resolve::unique_suffix_lens(categories.iter().map(|category| category.id.as_str()));
     for category in categories {
         let flags = if category.archived {
             " (archived)".dimmed().to_string()
@@ -134,7 +136,15 @@ pub fn categories(ctx: &Ctx, all: bool, as_json: bool) -> Result<()> {
         } else {
             String::new()
         };
-        println!("{}  {}{}", short_id(&category.id), category.name, flags);
+        println!(
+            "{}  {}{}",
+            styled_id(
+                &category.id,
+                id_lens.get(&category.id).copied().unwrap_or(6)
+            ),
+            category.name,
+            flags
+        );
     }
     Ok(())
 }
@@ -440,44 +450,19 @@ fn pick_category<'a>(
     categories: &'a [ExpenseCategory],
     reference: &str,
 ) -> Result<&'a ExpenseCategory> {
-    let needle = reference.trim();
-    if needle.is_empty() {
-        bail!("category is required");
-    }
-    if looks_like_id(needle)
-        && let Some(category) = categories.iter().find(|category| category.id == needle)
-    {
-        return Ok(category);
-    }
-    let lower = needle.to_lowercase();
-    if let Some(category) = categories
-        .iter()
-        .find(|category| category.name.to_lowercase() == lower)
-    {
-        return Ok(category);
-    }
-    let matches: Vec<&ExpenseCategory> = categories
-        .iter()
-        .filter(|category| category.name.to_lowercase().contains(&lower))
-        .collect();
-    match matches.as_slice() {
-        [one] => Ok(one),
-        [] => {
-            bail!("no expense category matches '{reference}' — run `clockify expenses categories`")
-        }
-        many => bail!(
-            "'{reference}' is ambiguous — matching expense categories: {}",
-            many.iter()
-                .map(|category| category.name.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-    }
+    resolve::pick(
+        "expense category",
+        "clockify expenses categories",
+        reference,
+        categories,
+        |category| &category.id,
+        |category| &category.name,
+    )
 }
 
 fn resolve_expense(ctx: &Ctx, reference: &str) -> Result<Expense> {
     let needle = reference.trim().to_lowercase();
-    if looks_like_id(&needle) {
+    if resolve::looks_like_id(&needle) {
         return ctx.client.expense(&ctx.workspace_id, &needle);
     }
     if needle.is_empty() || !needle.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -628,10 +613,6 @@ fn print_submit_result(
     println!("  request {} · {}", approval.id.yellow(), state);
 }
 
-fn looks_like_id(s: &str) -> bool {
-    s.len() == 24 && s.chars().all(|c| c.is_ascii_hexdigit())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -658,6 +639,26 @@ mod tests {
     fn rejects_ambiguous_category_substrings() {
         let categories = vec![category("abc", "Meal"), category("def", "Meals client")];
         assert!(resolve_category_from_slice(&categories, "mea").is_err());
+    }
+
+    #[test]
+    fn resolves_category_by_id_suffix() {
+        let categories = vec![
+            category("aaaaaaaaaaaaaaaaaaaaaaa1", "Meals"),
+            category("aaaaaaaaaaaaaaaaaaaaaaa2", "Taxi"),
+        ];
+        let picked = resolve_category_from_slice(&categories, "1").unwrap();
+        assert_eq!(picked.name, "Meals");
+    }
+
+    #[test]
+    fn category_exact_name_wins_over_id_suffix() {
+        let categories = vec![
+            category("aaaaaaaaaaaaaaaaaaaaadec", "Meals"),
+            category("aaaaaaaaaaaaaaaaaaaaaaa1", "Dec"),
+        ];
+        let picked = resolve_category_from_slice(&categories, "dec").unwrap();
+        assert_eq!(picked.name, "Dec");
     }
 
     #[test]

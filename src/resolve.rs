@@ -7,7 +7,7 @@ use crate::config::Ctx;
 use crate::models::{Project, Task, TimeEntry};
 use crate::time::{fmt_duration, fmt_local_date};
 
-fn looks_like_id(s: &str) -> bool {
+pub(crate) fn looks_like_id(s: &str) -> bool {
     s.len() == 24 && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
@@ -117,36 +117,53 @@ pub fn entry(ctx: &Ctx, reference: &str) -> Result<TimeEntry> {
     }
 }
 
-fn pick<'a, T>(
+/// Find an item by full id, exact name, unique name substring, or unique id
+/// suffix. Exact matches win outright; the fuzzy tier considers name
+/// substrings and id suffixes together, so a suffix highlighted in list
+/// output can never silently lose to a name that happens to contain it —
+/// such collisions error out with the candidates instead.
+pub(crate) fn pick<'a, T>(
     kind: &str,
+    list_cmd: &str,
     needle: &str,
     items: &'a [T],
     id: impl Fn(&T) -> &str,
     name: impl Fn(&T) -> &str,
 ) -> Result<&'a T> {
-    if looks_like_id(needle)
-        && let Some(item) = items.iter().find(|i| id(i) == needle)
+    let needle = needle.trim();
+    if needle.is_empty() {
+        bail!("{kind} reference is empty");
+    }
+    let lower = needle.to_lowercase();
+    if looks_like_id(&lower)
+        && let Some(item) = items.iter().find(|i| id(i) == lower)
     {
         return Ok(item);
     }
-    let lower = needle.to_lowercase();
     if let Some(item) = items.iter().find(|i| name(i).to_lowercase() == lower) {
         return Ok(item);
     }
+    let is_hex = lower.chars().all(|c| c.is_ascii_hexdigit());
     let matches: Vec<&T> = items
         .iter()
-        .filter(|i| name(i).to_lowercase().contains(&lower))
+        .filter(|i| name(i).to_lowercase().contains(&lower) || (is_hex && id(i).ends_with(&lower)))
         .collect();
     match matches.as_slice() {
         [one] => Ok(one),
         [] => {
-            bail!("no {kind} matches '{needle}' — run `clockify {kind}s` to see what's available")
+            bail!("no {kind} matches '{needle}' — run `{list_cmd}` to see what's available")
         }
         many => {
-            let names: Vec<&str> = many.iter().map(|i| name(i)).collect();
+            let candidates: Vec<String> = many
+                .iter()
+                .map(|i| {
+                    let id = id(i);
+                    format!("  {}  …{}", name(i), &id[id.len().saturating_sub(6)..])
+                })
+                .collect();
             bail!(
-                "'{needle}' is ambiguous — matching {kind}s: {}",
-                names.join(", ")
+                "'{needle}' is ambiguous — matching {kind}s:\n{}",
+                candidates.join("\n")
             )
         }
     }
@@ -155,7 +172,15 @@ fn pick<'a, T>(
 pub fn project(ctx: &Ctx, needle: &str) -> Result<Project> {
     let projects = ctx.client.projects(&ctx.workspace_id)?;
     let active: Vec<Project> = projects.into_iter().filter(|p| !p.archived).collect();
-    pick("project", needle, &active, |p| &p.id, |p| &p.name).cloned()
+    pick(
+        "project",
+        "clockify projects",
+        needle,
+        &active,
+        |p| &p.id,
+        |p| &p.name,
+    )
+    .cloned()
 }
 
 /// The configured default project of the current workspace, if any.
@@ -181,7 +206,15 @@ pub fn default_project(ctx: &Ctx) -> Result<Option<Project>> {
 
 pub fn task(ctx: &Ctx, project_id: &str, needle: &str) -> Result<Task> {
     let tasks = ctx.client.tasks(&ctx.workspace_id, project_id)?;
-    pick("task", needle, &tasks, |t| &t.id, |t| &t.name).cloned()
+    pick(
+        "task",
+        "clockify tasks <project>",
+        needle,
+        &tasks,
+        |t| &t.id,
+        |t| &t.name,
+    )
+    .cloned()
 }
 
 #[cfg(test)]
@@ -193,6 +226,88 @@ mod tests {
         assert_eq!(common_suffix_len("abc123", "xyz123"), 3);
         assert_eq!(common_suffix_len("abc", "abc"), 3);
         assert_eq!(common_suffix_len("abc", "xyz"), 0);
+    }
+
+    fn item(id: &str, name: &str) -> (String, String) {
+        (id.to_string(), name.to_string())
+    }
+
+    fn pick_item<'a>(items: &'a [(String, String)], needle: &str) -> Result<&'a (String, String)> {
+        pick(
+            "thing",
+            "clockify things",
+            needle,
+            items,
+            |t| &t.0,
+            |t| &t.1,
+        )
+    }
+
+    #[test]
+    fn pick_resolves_unique_id_suffix() {
+        let items = vec![
+            item("aaaaaaaaaaaaaaaaaaaaaaa1", "Writing"),
+            item("aaaaaaaaaaaaaaaaaaaaaaa2", "Design"),
+        ];
+        assert_eq!(pick_item(&items, "1").unwrap().1, "Writing");
+        assert_eq!(pick_item(&items, "aa2").unwrap().1, "Design");
+    }
+
+    #[test]
+    fn pick_exact_name_beats_id_suffix() {
+        let items = vec![
+            item("aaaaaaaaaaaaaaaaaaaa2024", "Writing"),
+            item("aaaaaaaaaaaaaaaaaaaaaaa1", "2024"),
+        ];
+        assert_eq!(pick_item(&items, "2024").unwrap().1, "2024");
+    }
+
+    #[test]
+    fn pick_full_id_beats_name_substring() {
+        let full = "aaaaaaaaaaaaaaaaaaaaaaa1";
+        let items = vec![
+            item(full, "Writing"),
+            item("bbbbbbbbbbbbbbbbbbbbbbb2", full), // name contains the other id
+        ];
+        assert_eq!(pick_item(&items, full).unwrap().1, "Writing");
+    }
+
+    #[test]
+    fn pick_name_substring_vs_suffix_collision_is_ambiguous() {
+        let items = vec![
+            item("aaaaaaaaaaaaaaaaaaaaaaa1", "Lab work"),
+            item("aaaaaaaaaaaaaaaaaaaaaaab", "Design"),
+        ];
+        // "ab" is a substring of "Lab work" and a suffix of the other id.
+        let err = pick_item(&items, "ab").unwrap_err().to_string();
+        assert!(err.contains("Lab work") && err.contains("Design"), "{err}");
+    }
+
+    #[test]
+    fn pick_agreeing_name_and_suffix_resolve() {
+        // "ab" matches the same item by name substring and id suffix.
+        let items = vec![
+            item("aaaaaaaaaaaaaaaaaaaaaaab", "Lab work"),
+            item("aaaaaaaaaaaaaaaaaaaaaaa1", "Design"),
+        ];
+        assert_eq!(pick_item(&items, "ab").unwrap().1, "Lab work");
+    }
+
+    #[test]
+    fn pick_ambiguous_suffix_errors() {
+        let items = vec![
+            item("aaaaaaaaaaaaaaaaaaaaaa19", "Writing"),
+            item("aaaaaaaaaaaaaaaaaaaaaa29", "Design"),
+        ];
+        assert!(pick_item(&items, "9").is_err());
+    }
+
+    #[test]
+    fn pick_rejects_empty_and_unknown_references() {
+        let items = vec![item("aaaaaaaaaaaaaaaaaaaaaaa1", "Writing")];
+        assert!(pick_item(&items, "").is_err());
+        assert!(pick_item(&items, "   ").is_err());
+        assert!(pick_item(&items, "zzz").is_err());
     }
 
     #[test]

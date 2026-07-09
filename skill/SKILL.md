@@ -59,6 +59,8 @@ clockify workspaces --json
 - Projects and tasks match by name: case-insensitive, substring is enough.
   An ambiguous name fails listing the candidates — pick one and retry. Exact
   ids from `projects --json` / `tasks --json` always work.
+- Unique id suffixes (highlighted in list output) also work for projects,
+  tasks, workspaces, and expense categories, resolving against the listed set.
 - Times accept `HH:MM`, `yesterday 17:00`, `YYYY-MM-DD HH:MM`, or RFC 3339,
   interpreted in the local timezone. Date flags on `log`/`report` accept
   `YYYY-MM-DD`, `today`, or `yesterday`.

@@ -358,7 +358,10 @@ fn approval_payload(period: Period, period_start: DateTime<Utc>) -> Value {
 
 fn expense_form(draft: &ExpenseDraft) -> Result<Form> {
     let mut form = Form::new()
-        .text("amount", crate::models::usd_to_cents(draft.amount).to_string())
+        .text(
+            "amount",
+            crate::models::usd_to_cents(draft.amount).to_string(),
+        )
         .text("categoryId", draft.category_id.clone())
         .text("date", to_api(draft.date))
         .text("userId", draft.user_id.clone())

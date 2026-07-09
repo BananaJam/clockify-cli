@@ -1,8 +1,10 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use colored::Colorize;
 
+use super::styled_id;
 use crate::config::{Config, Ctx};
 use crate::output;
+use crate::resolve;
 
 pub fn list(ctx: &Ctx, json: bool) -> Result<()> {
     let workspaces = ctx.client.workspaces()?;
@@ -27,6 +29,7 @@ pub fn list(ctx: &Ctx, json: bool) -> Result<()> {
         .map(|w| w.name.chars().count())
         .max()
         .unwrap_or(0);
+    let id_lens = resolve::unique_suffix_lens(workspaces.iter().map(|w| w.id.as_str()));
     for w in &workspaces {
         let current = w.id == ctx.workspace_id;
         let marker = if current {
@@ -36,29 +39,25 @@ pub fn list(ctx: &Ctx, json: bool) -> Result<()> {
         };
         let name = format!("{:<name_w$}", w.name);
         let name = if current { name.bold() } else { name.normal() };
-        println!("{marker} {name}  {}", w.id.dimmed());
+        println!(
+            "{marker} {name}  {}",
+            styled_id(&w.id, id_lens.get(&w.id).copied().unwrap_or(6))
+        );
     }
     Ok(())
 }
 
 pub fn switch(ctx: &Ctx, needle: &str) -> Result<()> {
     let workspaces = ctx.client.workspaces()?;
-    let lower = needle.to_lowercase();
-    let matches: Vec<_> = workspaces
-        .iter()
-        .filter(|w| w.id == needle || w.name.to_lowercase().contains(&lower))
-        .collect();
-    let workspace = match matches.as_slice() {
-        [one] => (*one).clone(),
-        [] => bail!("no workspace matches '{needle}' — run `clockify workspaces` to list them"),
-        many => {
-            let names: Vec<&str> = many.iter().map(|w| w.name.as_str()).collect();
-            bail!(
-                "'{needle}' is ambiguous — matching workspaces: {}",
-                names.join(", ")
-            )
-        }
-    };
+    let workspace = resolve::pick(
+        "workspace",
+        "clockify workspaces",
+        needle,
+        &workspaces,
+        |w| &w.id,
+        |w| &w.name,
+    )?
+    .clone();
 
     let mut cfg = Config::load()?;
     cfg.workspace_id = Some(workspace.id);

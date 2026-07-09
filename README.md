@@ -147,6 +147,11 @@ Type just the highlighted part into `edit` or `delete`. If a suffix ever becomes
 ambiguous, you get the list of candidates instead of a wrong guess — the CLI never
 acts on an ambiguous reference.
 
+The same treatment applies everywhere else ids are listed: `projects`, `tasks`,
+`workspaces`, and `expenses categories` all show a highlighted unique suffix, and
+any command that accepts one of these entities takes that suffix in place of the
+full id or name.
+
 ## The TUI
 
 Run `clockify` with no arguments.
