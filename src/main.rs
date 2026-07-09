@@ -11,14 +11,23 @@ mod tui;
 use std::io::IsTerminal;
 
 use anyhow::Result;
+use clap::builder::styling::{AnsiColor, Styles};
 use clap::{CommandFactory, Parser, Subcommand};
 use colored::Colorize;
 
 use config::Ctx;
 
+/// Help styling, matching the CLI's own palette (yellow accents, blue projects).
+const HELP_STYLES: Styles = Styles::styled()
+    .header(AnsiColor::Yellow.on_default().bold())
+    .usage(AnsiColor::Yellow.on_default().bold())
+    .literal(AnsiColor::Green.on_default().bold())
+    .placeholder(AnsiColor::Cyan.on_default());
+
 #[derive(Parser)]
 #[command(name = "clockify", version, about = "Track your work time in Clockify")]
 #[command(after_help = "Running without a command opens the interactive TUI.")]
+#[command(styles = HELP_STYLES)]
 struct Cli {
     /// Print machine-readable JSON instead of styled output
     #[arg(long, global = true)]
