@@ -73,6 +73,8 @@ clockify discard                                  # stop it and pretend it never
 clockify add "standup" --from 09:30 --to 09:45 -p backend
 clockify log --week                               # entries grouped by day, with totals
 clockify report --month                           # hours per project, with bars
+clockify submit -y                                # submit this month's time for approval
+clockify submit --week                            # submit this week's time for approval
 clockify edit 41d7 --to 17:30                     # edit by short id suffix
 clockify edit @ -p backend                        # @ is the running timer
 clockify delete 41d7                              # delete (asks first; -y skips)
@@ -91,6 +93,23 @@ the rare entry that genuinely belongs to nothing. The default is remembered per
 workspace, and the TUI forms pre-select it too. Started the timer on the wrong
 project anyway? `clockify edit @ -p <project>` fixes the running timer in place —
 `@` always means "the running timer", jj-style.
+
+### Submitting approvals
+
+`clockify submit` creates a Clockify approval request for your time entries. It
+defaults to the current month, because many workspaces approve monthly:
+
+```sh
+clockify submit                  # preview and confirm this month
+clockify submit -y               # submit this month without prompting
+clockify submit --week           # submit the current Monday–Sunday week
+clockify submit --resubmit       # resubmit rejected/withdrawn time
+clockify submit --from 2026-07-01 --period monthly
+```
+
+The command refuses to submit an empty period or a period with a running timer.
+Clockify now handles time and expenses separately; this CLI submits time entries
+only, and does not create expense approval requests.
 
 ### Short entry ids
 
@@ -118,6 +137,8 @@ Log · Report · Projects · Workspaces
 | `s` | start a timer (form) |
 | `x` / `X` | stop / discard the running timer |
 | `a` / `e` / `d` | add / edit / delete an entry |
+| `m` / `w` | month / week report period (in Report) |
+| `S` / `R` | submit / resubmit the report period (in Report) |
 | `Enter` | switch workspace (in Workspaces) |
 | `t` | cycle theme |
 | `r` | refresh |

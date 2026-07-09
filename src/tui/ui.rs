@@ -3,7 +3,9 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Tabs};
+use ratatui::widgets::{
+    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Tabs,
+};
 
 use super::app::{App, Field, Form, Mode, TABS};
 use super::theme::Theme;
@@ -71,21 +73,30 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn project_color(t: &Theme, p: Option<&Project>) -> Color {
-    p.and_then(Project::rgb).map(|(r, g, b)| Color::Rgb(r, g, b)).unwrap_or(t.accent)
+    p.and_then(Project::rgb)
+        .map(|(r, g, b)| Color::Rgb(r, g, b))
+        .unwrap_or(t.accent)
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let t = app.theme;
     let cols = Layout::horizontal([Constraint::Min(0), Constraint::Length(46)]).split(area);
     let left = Line::from(vec![
-        Span::styled(" ⏱ clockify ", Style::new().fg(t.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " ⏱ clockify ",
+            Style::new().fg(t.accent).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(format!("— {}", app.workspace_name), Style::new().fg(t.dim)),
     ]);
     f.render_widget(Paragraph::new(left), cols[0]);
 
     let right = match &app.running {
         Some(e) => {
-            let desc = if e.description.is_empty() { "(no description)" } else { &e.description };
+            let desc = if e.description.is_empty() {
+                "(no description)"
+            } else {
+                &e.description
+            };
             Line::from(vec![
                 Span::styled("▶ ", Style::new().fg(t.green).add_modifier(Modifier::BOLD)),
                 Span::styled(truncate(desc, 26), Style::new().fg(t.fg)),
@@ -102,12 +113,25 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
     let t = app.theme;
-    let area = Rect { x: area.x + 1, width: area.width.saturating_sub(1), ..area };
-    let tabs = Tabs::new(TABS.iter().map(|s| Line::from(format!(" {s} "))).collect::<Vec<_>>())
-        .select(app.tab)
-        .style(Style::new().fg(t.dim))
-        .highlight_style(Style::new().bg(t.selection_bg).fg(t.fg).add_modifier(Modifier::BOLD))
-        .divider(Span::styled(" · ", Style::new().fg(t.dim)));
+    let area = Rect {
+        x: area.x + 1,
+        width: area.width.saturating_sub(1),
+        ..area
+    };
+    let tabs = Tabs::new(
+        TABS.iter()
+            .map(|s| Line::from(format!(" {s} ")))
+            .collect::<Vec<_>>(),
+    )
+    .select(app.tab)
+    .style(Style::new().fg(t.dim))
+    .highlight_style(
+        Style::new()
+            .bg(t.selection_bg)
+            .fg(t.fg)
+            .add_modifier(Modifier::BOLD),
+    )
+    .divider(Span::styled(" · ", Style::new().fg(t.dim)));
     f.render_widget(tabs, area);
 }
 
@@ -116,16 +140,58 @@ fn week_label(app: &App) -> String {
     let label = match app.week_offset {
         0 => "this week",
         -1 => "last week",
-        n => return format!("{} – {}  ({} weeks ago)", from.format("%-d %b"), to.format("%-d %b %Y"), -n),
+        n => {
+            return format!(
+                "{} – {}  ({} weeks ago)",
+                from.format("%-d %b"),
+                to.format("%-d %b %Y"),
+                -n
+            );
+        }
     };
-    format!("{} – {}  ({label})", from.format("%-d %b"), to.format("%-d %b %Y"))
+    format!(
+        "{} – {}  ({label})",
+        from.format("%-d %b"),
+        to.format("%-d %b %Y")
+    )
+}
+
+fn report_label(app: &App) -> String {
+    let (from, to) = app.report_bounds();
+    match app.report_period {
+        crate::commands::submit::Period::Weekly => week_label(app),
+        crate::commands::submit::Period::Monthly => match app.month_offset {
+            0 => format!(
+                "{} – {}  (this month)",
+                from.format("%-d %b"),
+                to.format("%-d %b %Y")
+            ),
+            -1 => format!(
+                "{} – {}  (last month)",
+                from.format("%-d %b"),
+                to.format("%-d %b %Y")
+            ),
+            n => format!(
+                "{} – {}  ({} months ago)",
+                from.format("%-d %b"),
+                to.format("%-d %b %Y"),
+                -n
+            ),
+        },
+        crate::commands::submit::Period::SemiMonthly => {
+            format!("{} – {}", from.format("%-d %b"), to.format("%-d %b %Y"))
+        }
+    }
 }
 
 fn draw_log(f: &mut Frame, app: &App, area: Rect) {
     let t = app.theme;
     let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
     f.render_widget(
-        Paragraph::new(Span::styled(format!(" {}", week_label(app)), Style::new().fg(t.dim))),
+        Paragraph::new(Span::styled(
+            format!(" {}", week_label(app)),
+            Style::new().fg(t.dim),
+        )),
         rows[0],
     );
 
@@ -135,13 +201,18 @@ fn draw_log(f: &mut Frame, app: &App, area: Rect) {
         } else {
             "no entries this week — press s to start a timer or a to add one"
         };
-        let msg = Paragraph::new(Span::styled(text, Style::new().fg(t.dim)))
-            .alignment(Alignment::Center);
+        let msg =
+            Paragraph::new(Span::styled(text, Style::new().fg(t.dim))).alignment(Alignment::Center);
         f.render_widget(msg, rows[1]);
         return;
     }
 
-    let dur_w = app.entries.iter().map(|e| fmt_duration(e.duration()).len()).max().unwrap_or(0);
+    let dur_w = app
+        .entries
+        .iter()
+        .map(|e| fmt_duration(e.duration()).len())
+        .max()
+        .unwrap_or(0);
     let proj_w = app
         .entries
         .iter()
@@ -171,7 +242,10 @@ fn draw_log(f: &mut Frame, app: &App, area: Rect) {
                     format!(" {}", day_name(date, today)),
                     Style::new().fg(t.accent).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(format!("  · {}", fmt_duration(day_total)), Style::new().fg(t.yellow)),
+                Span::styled(
+                    format!("  · {}", fmt_duration(day_total)),
+                    Style::new().fg(t.yellow),
+                ),
             ])));
         }
         if i == app.sel_log {
@@ -192,7 +266,10 @@ fn entry_line(app: &App, e: &TimeEntry, dur_w: usize, proj_w: usize) -> Line<'st
     let running = e.time_interval.end.is_none();
     let end_span = match e.time_interval.end {
         Some(end) => Span::styled(fmt_local_time(end), Style::new().fg(t.fg)),
-        None => Span::styled("now  ".to_string(), Style::new().fg(t.green).add_modifier(Modifier::BOLD)),
+        None => Span::styled(
+            "now  ".to_string(),
+            Style::new().fg(t.green).add_modifier(Modifier::BOLD),
+        ),
     };
     let dur_style = if running {
         Style::new().fg(t.green).add_modifier(Modifier::BOLD)
@@ -205,11 +282,20 @@ fn entry_line(app: &App, e: &TimeEntry, dur_w: usize, proj_w: usize) -> Line<'st
         Span::styled(e.description.clone(), Style::new().fg(t.fg))
     };
     Line::from(vec![
-        Span::styled(format!("   {}–", fmt_local_time(e.time_interval.start)), Style::new().fg(t.fg)),
-        end_span,
-        Span::styled(format!("  {:>dur_w$}", fmt_duration(e.duration())), dur_style),
         Span::styled(
-            format!("  {:<proj_w$}", project.map(|p| p.name.as_str()).unwrap_or("")),
+            format!("   {}–", fmt_local_time(e.time_interval.start)),
+            Style::new().fg(t.fg),
+        ),
+        end_span,
+        Span::styled(
+            format!("  {:>dur_w$}", fmt_duration(e.duration())),
+            dur_style,
+        ),
+        Span::styled(
+            format!(
+                "  {:<proj_w$}",
+                project.map(|p| p.name.as_str()).unwrap_or("")
+            ),
             Style::new().fg(project_color(t, project)),
         ),
         Span::raw("  "),
@@ -228,15 +314,32 @@ fn day_name(date: NaiveDate, today: NaiveDate) -> String {
 
 fn draw_report(f: &mut Frame, app: &App, area: Rect) {
     let t = app.theme;
-    let rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Min(0)])
-        .split(area);
+    let rows = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .split(area);
     f.render_widget(
-        Paragraph::new(Span::styled(format!(" {}", week_label(app)), Style::new().fg(t.dim))),
+        Paragraph::new(Span::styled(
+            format!(" {}", report_label(app)),
+            Style::new().fg(t.dim),
+        )),
         rows[0],
     );
 
-    if app.entries.is_empty() {
-        let text = if app.loading { "loading…" } else { "no entries this week" };
+    let entries = app.report_entries();
+    if entries.is_empty() {
+        let noun = if app.report_period == crate::commands::submit::Period::Monthly {
+            "month"
+        } else {
+            "week"
+        };
+        let text = if app.report_loading() {
+            "loading…".to_string()
+        } else {
+            format!("no entries this {noun}")
+        };
         f.render_widget(
             Paragraph::new(Span::styled(text, Style::new().fg(t.dim))).alignment(Alignment::Center),
             rows[2],
@@ -247,10 +350,13 @@ fn draw_report(f: &mut Frame, app: &App, area: Rect) {
     // Aggregate per project.
     let mut agg: Vec<(Option<&Project>, Duration)> = Vec::new();
     let mut total = Duration::zero();
-    for e in &app.entries {
+    for e in entries {
         let project = app.project_of(e);
         total += e.duration();
-        match agg.iter_mut().find(|(p, _)| p.map(|p| &p.id) == project.map(|p| &p.id)) {
+        match agg
+            .iter_mut()
+            .find(|(p, _)| p.map(|p| &p.id) == project.map(|p| &p.id))
+        {
             Some((_, d)) => *d += e.duration(),
             None => agg.push((project, e.duration())),
         }
@@ -259,21 +365,75 @@ fn draw_report(f: &mut Frame, app: &App, area: Rect) {
     let max_secs = agg.first().map_or(1, |(_, d)| d.num_seconds()).max(1);
     let name_w = agg
         .iter()
-        .map(|(p, _)| p.map(|p| p.name.chars().count()).unwrap_or("(no project)".len()))
+        .map(|(p, _)| {
+            p.map(|p| p.name.chars().count())
+                .unwrap_or("(no project)".len())
+        })
         .max()
         .unwrap_or(0);
-    let dur_w = agg.iter().map(|(_, d)| fmt_duration(*d).len()).max().unwrap_or(0);
+    let dur_w = agg
+        .iter()
+        .map(|(_, d)| fmt_duration(*d).len())
+        .max()
+        .unwrap_or(0);
 
     let mut lines = vec![Line::from(vec![
         Span::styled(" total ".to_string(), Style::new().fg(t.dim)),
-        Span::styled(fmt_duration(total), Style::new().fg(t.fg).add_modifier(Modifier::BOLD)),
-        Span::styled(format!("  across {} entries", app.entries.len()), Style::new().fg(t.dim)),
+        Span::styled(
+            fmt_duration(total),
+            Style::new().fg(t.fg).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("  across {} entries", entries.len()),
+            Style::new().fg(t.dim),
+        ),
     ])];
+    if let Some(row) = app.report_approval() {
+        let request = &row.approval_request;
+        let state = request
+            .status
+            .as_ref()
+            .map(|s| s.state.as_str())
+            .unwrap_or("submitted");
+        let note = request
+            .status
+            .as_ref()
+            .and_then(|s| s.note.as_deref())
+            .filter(|note| !note.is_empty())
+            .map(|note| format!(" · {note}"))
+            .unwrap_or_default();
+        let updated = request
+            .status
+            .as_ref()
+            .and_then(|s| s.updated_at)
+            .map(|dt| {
+                format!(
+                    " · updated {}",
+                    dt.with_timezone(&Local).format("%-d %b %H:%M")
+                )
+            })
+            .unwrap_or_default();
+        lines.push(Line::from(vec![
+            Span::styled(" approval ".to_string(), Style::new().fg(t.dim)),
+            Span::styled(
+                state.to_string(),
+                Style::new().fg(t.yellow).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(" · {} entries{note}{updated}", row.time_entries.len()),
+                Style::new().fg(t.dim),
+            ),
+        ]));
+    }
     lines.push(Line::default());
     for (project, dur) in &agg {
-        let name = project.map(|p| p.name.clone()).unwrap_or_else(|| "(no project)".to_string());
+        let name = project
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "(no project)".to_string());
         let share = 100.0 * dur.num_seconds() as f64 / total.num_seconds().max(1) as f64;
-        let bar_len = ((dur.num_seconds() as f64 / max_secs as f64) * 30.0).round().max(1.0) as usize;
+        let bar_len = ((dur.num_seconds() as f64 / max_secs as f64) * 30.0)
+            .round()
+            .max(1.0) as usize;
         let color = project_color(t, *project);
         lines.push(Line::from(vec![
             Span::styled(format!("  {name:<name_w$}"), Style::new().fg(color)),
@@ -292,13 +452,21 @@ fn draw_projects(f: &mut Frame, app: &App, area: Rect) {
     let t = app.theme;
     if app.projects.is_empty() {
         f.render_widget(
-            Paragraph::new(Span::styled("no projects in this workspace", Style::new().fg(t.dim)))
-                .alignment(Alignment::Center),
+            Paragraph::new(Span::styled(
+                "no projects in this workspace",
+                Style::new().fg(t.dim),
+            ))
+            .alignment(Alignment::Center),
             area,
         );
         return;
     }
-    let name_w = app.projects.iter().map(|p| p.name.chars().count()).max().unwrap_or(0);
+    let name_w = app
+        .projects
+        .iter()
+        .map(|p| p.name.chars().count())
+        .max()
+        .unwrap_or(0);
     // Group by client, clientless last (projects are already name-sorted).
     let mut groups: Vec<(String, Vec<&Project>)> = Vec::new();
     for p in &app.projects {
@@ -313,13 +481,18 @@ fn draw_projects(f: &mut Frame, app: &App, area: Rect) {
         }
     }
     groups.sort_by(|(a, _), (b, _)| {
-        (a == "(no client)").cmp(&(b == "(no client)")).then(a.to_lowercase().cmp(&b.to_lowercase()))
+        (a == "(no client)")
+            .cmp(&(b == "(no client)"))
+            .then(a.to_lowercase().cmp(&b.to_lowercase()))
     });
 
     let mut lines = Vec::new();
     for (client, group) in &groups {
         lines.push(Line::from(vec![
-            Span::styled(format!(" {client}"), Style::new().fg(t.accent).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!(" {client}"),
+                Style::new().fg(t.accent).add_modifier(Modifier::BOLD),
+            ),
             Span::styled(format!("  · {}", group.len()), Style::new().fg(t.yellow)),
         ]));
         for p in group {
@@ -330,8 +503,11 @@ fn draw_projects(f: &mut Frame, app: &App, area: Rect) {
             if p.archived {
                 flags.push("archived");
             }
-            let flags =
-                if flags.is_empty() { String::new() } else { format!("  ({})", flags.join(", ")) };
+            let flags = if flags.is_empty() {
+                String::new()
+            } else {
+                format!("  ({})", flags.join(", "))
+            };
             lines.push(Line::from(vec![
                 Span::styled(
                     format!("   {:<name_w$}", p.name),
@@ -358,7 +534,10 @@ fn draw_workspaces(f: &mut Frame, app: &App, area: Rect) {
                 Span::raw("   ")
             };
             let name = if current {
-                Span::styled(w.name.clone(), Style::new().fg(t.fg).add_modifier(Modifier::BOLD))
+                Span::styled(
+                    w.name.clone(),
+                    Style::new().fg(t.fg).add_modifier(Modifier::BOLD),
+                )
             } else {
                 Span::styled(w.name.clone(), Style::new().fg(t.fg))
             };
@@ -374,7 +553,11 @@ fn draw_workspaces(f: &mut Frame, app: &App, area: Rect) {
 fn draw_status(f: &mut Frame, app: &App, area: Rect) {
     let t = app.theme;
     if let Some((msg, is_error)) = &app.status {
-        let style = if *is_error { Style::new().fg(t.red) } else { Style::new().fg(t.green) };
+        let style = if *is_error {
+            Style::new().fg(t.red)
+        } else {
+            Style::new().fg(t.green)
+        };
         f.render_widget(Paragraph::new(Span::styled(format!(" {msg}"), style)), area);
     }
 }
@@ -383,37 +566,55 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let t = app.theme;
     let keys = match &app.mode {
         Mode::Normal => match app.tab {
-            0 => "q quit · tab views · j/k move · h/l week · s start · x stop · X discard · a add · e edit · d delete · t theme",
-            1 => "q quit · tab views · h/l week · s start · x stop · t theme",
+            0 => {
+                "q quit · tab views · j/k move · h/l week · s start · x stop · X discard · a add · e edit · d delete · t theme"
+            }
+            1 => {
+                "q quit · tab views · h/l period · m month · w week · S submit · R resubmit · s start · x stop · t theme"
+            }
             3 => "q quit · tab views · j/k move · enter switch workspace · t theme",
             _ => "q quit · tab views · s start · x stop · a add · t theme",
         },
         Mode::Confirm { .. } => "y confirm · n/esc cancel",
         Mode::Form(form) => match form.fields.get(form.focus) {
-            Some(Field::Project { .. }) => "←/→ pick project · tab next field · enter save · esc cancel",
+            Some(Field::Project { .. }) => {
+                "←/→ pick project · tab next field · enter save · esc cancel"
+            }
             Some(Field::Toggle { .. }) => "space toggle · tab next field · enter save · esc cancel",
             _ => "tab next field · enter save · esc cancel",
         },
     };
-    f.render_widget(Paragraph::new(Span::styled(format!(" {keys}"), Style::new().fg(t.dim))), area);
+    f.render_widget(
+        Paragraph::new(Span::styled(format!(" {keys}"), Style::new().fg(t.dim))),
+        area,
+    );
 }
 
 fn draw_confirm(f: &mut Frame, t: &Theme, message: &str) {
     // max() before min(): on very narrow terminals the available width can
     // drop below the aesthetic minimum, and clamp(min, max) would panic.
-    let width = (message.chars().count() as u16 + 6).max(30).min(f.area().width.saturating_sub(2));
+    let width = (message.chars().count() as u16 + 6)
+        .max(30)
+        .min(f.area().width.saturating_sub(2));
     let area = centered_rect(width, 5, f.area());
     f.render_widget(Clear, area);
     let block = Block::new()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(t.red))
-        .title(Span::styled(" Confirm ", Style::new().fg(t.red).add_modifier(Modifier::BOLD)))
+        .title(Span::styled(
+            " Confirm ",
+            Style::new().fg(t.red).add_modifier(Modifier::BOLD),
+        ))
         .style(Style::new().bg(t.bg).fg(t.fg));
     let inner = block.inner(area);
     f.render_widget(block, area);
-    let rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
-        .split(inner);
+    let rows = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+    ])
+    .split(inner);
     f.render_widget(
         Paragraph::new(message.to_string()).alignment(Alignment::Center),
         rows[0],
@@ -434,7 +635,10 @@ fn draw_form(f: &mut Frame, app: &App, form: &Form) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(t.accent))
-        .title(Span::styled(form.title, Style::new().fg(t.accent).add_modifier(Modifier::BOLD)))
+        .title(Span::styled(
+            form.title,
+            Style::new().fg(t.accent).add_modifier(Modifier::BOLD),
+        ))
         .style(Style::new().bg(t.bg).fg(t.fg));
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -448,16 +652,25 @@ fn draw_form(f: &mut Frame, app: &App, form: &Form) {
         } else {
             Style::new().fg(t.dim)
         };
-        let mut spans = vec![Span::styled(format!(" {:<12} ", field_label(field)), label_style)];
+        let mut spans = vec![Span::styled(
+            format!(" {:<12} ", field_label(field)),
+            label_style,
+        )];
         match field {
             Field::Text { input, .. } => {
                 if focused {
                     let (before, under, after) = input.split_at_cursor();
                     spans.push(Span::styled(before, Style::new().fg(t.fg)));
-                    spans.push(Span::styled(under, Style::new().add_modifier(Modifier::REVERSED)));
+                    spans.push(Span::styled(
+                        under,
+                        Style::new().add_modifier(Modifier::REVERSED),
+                    ));
                     spans.push(Span::styled(after, Style::new().fg(t.fg)));
                 } else {
-                    spans.push(Span::styled(input.value().to_string(), Style::new().fg(t.fg)));
+                    spans.push(Span::styled(
+                        input.value().to_string(),
+                        Style::new().fg(t.fg),
+                    ));
                 }
             }
             Field::Project { idx, .. } => {
@@ -475,7 +688,10 @@ fn draw_form(f: &mut Frame, app: &App, form: &Form) {
         lines.push(Line::from(spans));
     }
     if let Some(err) = &form.error {
-        lines.push(Line::from(Span::styled(format!(" {err}"), Style::new().fg(t.red))));
+        lines.push(Line::from(Span::styled(
+            format!(" {err}"),
+            Style::new().fg(t.red),
+        )));
     }
     f.render_widget(Paragraph::new(lines), inner);
 }

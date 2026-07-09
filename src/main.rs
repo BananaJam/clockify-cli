@@ -171,6 +171,27 @@ enum Cmd {
         #[arg(long)]
         to: Option<String>,
     },
+    /// Submit a time approval request (default: this month)
+    Submit {
+        /// Submit this week (Monday through Sunday)
+        #[arg(long, conflicts_with_all = ["month", "from", "period"])]
+        week: bool,
+        /// Submit this month (the default)
+        #[arg(long, conflicts_with_all = ["week", "from", "period"])]
+        month: bool,
+        /// Approval period start date: YYYY-MM-DD, "today", or "yesterday"
+        #[arg(long)]
+        from: Option<String>,
+        /// Approval period used with --from, or to override the default
+        #[arg(long, value_enum)]
+        period: Option<commands::submit::Period>,
+        /// Re-submit rejected or withdrawn entries instead of creating a new request
+        #[arg(long)]
+        resubmit: bool,
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
+    },
     /// Manage the bundled agent skill (Claude Code, Codex)
     Skill {
         #[command(subcommand)]
@@ -237,22 +258,38 @@ fn run() -> Result<()> {
     };
     match cmd {
         Cmd::Auth { cmd: None } => commands::auth::wizard(),
-        Cmd::Auth { cmd: Some(AuthCmd::Status) } => commands::auth::status(),
+        Cmd::Auth {
+            cmd: Some(AuthCmd::Status),
+        } => commands::auth::status(),
         Cmd::Workspaces { cmd: None } => commands::workspaces::list(&Ctx::load()?, json),
-        Cmd::Workspaces { cmd: Some(WorkspacesCmd::Switch { workspace }) } => {
-            commands::workspaces::switch(&Ctx::load()?, &workspace)
-        }
+        Cmd::Workspaces {
+            cmd: Some(WorkspacesCmd::Switch { workspace }),
+        } => commands::workspaces::switch(&Ctx::load()?, &workspace),
         Cmd::Projects { all, cmd: None } => commands::projects::run(&Ctx::load()?, all, json),
-        Cmd::Projects { cmd: Some(ProjectsCmd::Default { project, clear }), .. } => {
-            commands::projects::default(&Ctx::load()?, project.as_deref(), clear)
-        }
+        Cmd::Projects {
+            cmd: Some(ProjectsCmd::Default { project, clear }),
+            ..
+        } => commands::projects::default(&Ctx::load()?, project.as_deref(), clear),
         Cmd::Tasks { project } => commands::tasks::run(&Ctx::load()?, &project, json),
-        Cmd::Start { description, project, no_project, task, billable, at } => {
-            commands::start::run(
-                &Ctx::load()?,
-                commands::start::Args { description, project, no_project, task, billable, at, json },
-            )
-        }
+        Cmd::Start {
+            description,
+            project,
+            no_project,
+            task,
+            billable,
+            at,
+        } => commands::start::run(
+            &Ctx::load()?,
+            commands::start::Args {
+                description,
+                project,
+                no_project,
+                task,
+                billable,
+                at,
+                json,
+            },
+        ),
         Cmd::Stop { at } => commands::stop::run(&Ctx::load()?, at, json),
         Cmd::Discard { yes } => commands::discard::run(&Ctx::load()?, yes, json),
         Cmd::Status { short: true } => {
@@ -261,30 +298,106 @@ fn run() -> Result<()> {
         }
         Cmd::Status { short: false } => commands::status::run(&Ctx::load()?, json),
         // `today` is the default range; the flag exists only for explicitness.
-        Cmd::Log { today: _, week, from, to, limit } => commands::log::run(
+        Cmd::Log {
+            today: _,
+            week,
+            from,
+            to,
+            limit,
+        } => commands::log::run(
             &Ctx::load()?,
-            commands::log::Args { week, from, to, limit, json },
+            commands::log::Args {
+                week,
+                from,
+                to,
+                limit,
+                json,
+            },
         ),
-        Cmd::Add { description, from, to, project, no_project, task, billable } => {
-            commands::add::run(
-                &Ctx::load()?,
-                commands::add::Args { description, from, to, project, no_project, task, billable, json },
-            )
-        }
-        Cmd::Edit { id, description, project, from, to } => commands::edit::run(
+        Cmd::Add {
+            description,
+            from,
+            to,
+            project,
+            no_project,
+            task,
+            billable,
+        } => commands::add::run(
             &Ctx::load()?,
-            commands::edit::Args { id, description, project, from, to, json },
+            commands::add::Args {
+                description,
+                from,
+                to,
+                project,
+                no_project,
+                task,
+                billable,
+                json,
+            },
+        ),
+        Cmd::Edit {
+            id,
+            description,
+            project,
+            from,
+            to,
+        } => commands::edit::run(
+            &Ctx::load()?,
+            commands::edit::Args {
+                id,
+                description,
+                project,
+                from,
+                to,
+                json,
+            },
         ),
         Cmd::Delete { id, yes } => commands::delete::run(&Ctx::load()?, &id, yes, json),
         // `week` is the default range; the flag exists only for explicitness.
-        Cmd::Report { week: _, month, from, to } => commands::report::run(
+        Cmd::Report {
+            week: _,
+            month,
+            from,
+            to,
+        } => commands::report::run(
             &Ctx::load()?,
-            commands::report::Args { month, from, to, json },
+            commands::report::Args {
+                month,
+                from,
+                to,
+                json,
+            },
         ),
-        Cmd::Skill { cmd: SkillCmd::Install { project, claude, codex } } => {
-            commands::skill::install(project, claude, codex)
-        }
-        Cmd::Skill { cmd: SkillCmd::Show } => {
+        Cmd::Submit {
+            week,
+            month,
+            from,
+            period,
+            resubmit,
+            yes,
+        } => commands::submit::run(
+            &Ctx::load()?,
+            commands::submit::Args {
+                week,
+                month,
+                from,
+                period,
+                resubmit,
+                yes,
+                json,
+            },
+        ),
+        Cmd::Skill {
+            cmd:
+                SkillCmd::Install {
+                    project,
+                    claude,
+                    codex,
+                },
+        } => commands::skill::install(project, claude, codex),
+        Cmd::Skill {
+            cmd: SkillCmd::Show,
+        } => {
             commands::skill::show();
             Ok(())
         }

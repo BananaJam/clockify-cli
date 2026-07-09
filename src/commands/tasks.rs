@@ -20,14 +20,26 @@ pub fn run(ctx: &Ctx, project: &str, json: bool) -> Result<()> {
     }
 
     if tasks.is_empty() {
-        println!("Project {} has no tasks.", in_project_color(&project.name, Some(&project)));
+        println!(
+            "Project {} has no tasks.",
+            in_project_color(&project.name, Some(&project))
+        );
         return Ok(());
     }
-    let name_w = tasks.iter().map(|t| t.name.chars().count()).max().unwrap_or(0);
+    let name_w = tasks
+        .iter()
+        .map(|t| t.name.chars().count())
+        .max()
+        .unwrap_or(0);
     println!(
         "{}  {}",
         in_project_color(&project.name, Some(&project)).bold(),
-        format!("· {} task{}", tasks.len(), if tasks.len() == 1 { "" } else { "s" }).yellow()
+        format!(
+            "· {} task{}",
+            tasks.len(),
+            if tasks.len() == 1 { "" } else { "s" }
+        )
+        .yellow()
     );
     for task in &tasks {
         let status = match task.status.as_deref() {
@@ -36,7 +48,12 @@ pub fn run(ctx: &Ctx, project: &str, json: bool) -> Result<()> {
             Some(other) => other.to_lowercase().normal(),
             None => "".normal(),
         };
-        println!("  {:<name_w$}  {:<8}  {}", task.name, status, task.id.dimmed());
+        println!(
+            "  {:<name_w$}  {:<8}  {}",
+            task.name,
+            status,
+            task.id.dimmed()
+        );
     }
     Ok(())
 }

@@ -17,7 +17,11 @@ pub struct Args {
 }
 
 pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
-    if args.description.is_none() && args.project.is_none() && args.from.is_none() && args.to.is_none() {
+    if args.description.is_none()
+        && args.project.is_none()
+        && args.from.is_none()
+        && args.to.is_none()
+    {
         bail!("nothing to change — pass at least one of --description, --project, --from, --to");
     }
 
@@ -37,7 +41,11 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         bail!("the entry would end before it starts");
     }
 
-    let new_project = args.project.as_deref().map(|p| resolve::project(ctx, p)).transpose()?;
+    let new_project = args
+        .project
+        .as_deref()
+        .map(|p| resolve::project(ctx, p))
+        .transpose()?;
     let project_id = match &new_project {
         Some(p) => Some(p.id.clone()),
         None => existing.project_id.clone(),
@@ -71,7 +79,9 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         body["taskId"] = json!(tid);
     }
 
-    let updated = ctx.client.update_time_entry(&ctx.workspace_id, &existing.id, &body)?;
+    let updated = ctx
+        .client
+        .update_time_entry(&ctx.workspace_id, &existing.id, &body)?;
 
     if args.json {
         let project = match &updated.project_id {

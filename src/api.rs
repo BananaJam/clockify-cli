@@ -5,7 +5,10 @@ use reqwest::blocking::{Client as HttpClient, RequestBuilder, Response};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use crate::models::{Project, Task, TimeEntry, User, Workspace};
+use crate::commands::submit::Period;
+use crate::models::{
+    ApprovalRequest, ApprovalRequestRow, Project, Task, TimeEntry, User, Workspace,
+};
 use crate::time::{to_api, to_api_query};
 
 const BASE: &str = "https://api.clockify.me/api/v1";
@@ -58,7 +61,9 @@ impl Client {
 
     fn get_json<T: DeserializeOwned>(&self, path: &str, query: &[(&str, String)]) -> Result<T> {
         let req = self.request(reqwest::Method::GET, path).query(query);
-        self.send(req)?.json().context("failed to parse the Clockify API response")
+        self.send(req)?
+            .json()
+            .context("failed to parse the Clockify API response")
     }
 
     /// GET a paginated list endpoint, following pages until exhausted.
@@ -103,20 +108,35 @@ impl Client {
     }
 
     pub fn tasks(&self, ws: &str, project: &str) -> Result<Vec<Task>> {
-        self.get_paged(&format!("/workspaces/{ws}/projects/{project}/tasks"), &[], None)
+        self.get_paged(
+            &format!("/workspaces/{ws}/projects/{project}/tasks"),
+            &[],
+            None,
+        )
     }
 
     pub fn create_time_entry(&self, ws: &str, body: &Value) -> Result<TimeEntry> {
         let req = self
-            .request(reqwest::Method::POST, &format!("/workspaces/{ws}/time-entries"))
+            .request(
+                reqwest::Method::POST,
+                &format!("/workspaces/{ws}/time-entries"),
+            )
             .json(body);
-        let entry = self.send(req)?.json().context("failed to parse the created time entry")?;
+        let entry = self
+            .send(req)?
+            .json()
+            .context("failed to parse the created time entry")?;
         crate::status_cache::invalidate();
         Ok(entry)
     }
 
     /// Stop the currently running timer. Returns None when no timer is running.
-    pub fn stop_timer(&self, ws: &str, user: &str, end: DateTime<Utc>) -> Result<Option<TimeEntry>> {
+    pub fn stop_timer(
+        &self,
+        ws: &str,
+        user: &str,
+        end: DateTime<Utc>,
+    ) -> Result<Option<TimeEntry>> {
         let resp = self
             .request(
                 reqwest::Method::PATCH,
@@ -128,7 +148,9 @@ impl Client {
         if resp.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
-        let entry = check(resp)?.json().context("failed to parse the stopped time entry")?;
+        let entry = check(resp)?
+            .json()
+            .context("failed to parse the stopped time entry")?;
         crate::status_cache::invalidate();
         Ok(Some(entry))
     }
@@ -162,9 +184,15 @@ impl Client {
 
     pub fn update_time_entry(&self, ws: &str, id: &str, body: &Value) -> Result<TimeEntry> {
         let req = self
-            .request(reqwest::Method::PUT, &format!("/workspaces/{ws}/time-entries/{id}"))
+            .request(
+                reqwest::Method::PUT,
+                &format!("/workspaces/{ws}/time-entries/{id}"),
+            )
             .json(body);
-        let entry = self.send(req)?.json().context("failed to parse the updated time entry")?;
+        let entry = self
+            .send(req)?
+            .json()
+            .context("failed to parse the updated time entry")?;
         crate::status_cache::invalidate();
         Ok(entry)
     }
@@ -177,5 +205,85 @@ impl Client {
         self.send(req)?;
         crate::status_cache::invalidate();
         Ok(())
+    }
+
+    pub fn approval_requests(
+        &self,
+        ws: &str,
+        status: Option<&str>,
+    ) -> Result<Vec<ApprovalRequestRow>> {
+        let mut query = Vec::new();
+        if let Some(status) = status {
+            query.push(("status", status.to_string()));
+        }
+        self.get_paged(&format!("/workspaces/{ws}/approval-requests"), &query, None)
+    }
+
+    pub fn submit_approval_request(
+        &self,
+        ws: &str,
+        period: Period,
+        period_start: DateTime<Utc>,
+    ) -> Result<ApprovalRequest> {
+        self.send_approval_request(
+            ws,
+            "/approval-requests",
+            period,
+            period_start,
+            "failed to parse the submitted approval request",
+        )
+    }
+
+    pub fn resubmit_approval_request(
+        &self,
+        ws: &str,
+        period: Period,
+        period_start: DateTime<Utc>,
+    ) -> Result<ApprovalRequest> {
+        self.send_approval_request(
+            ws,
+            "/approval-requests/resubmit-entries-for-approval",
+            period,
+            period_start,
+            "failed to parse the resubmitted approval request",
+        )
+    }
+
+    fn send_approval_request(
+        &self,
+        ws: &str,
+        path: &str,
+        period: Period,
+        period_start: DateTime<Utc>,
+        parse_context: &'static str,
+    ) -> Result<ApprovalRequest> {
+        let body = approval_payload(period, period_start);
+        let req = self
+            .request(reqwest::Method::POST, &format!("/workspaces/{ws}{path}"))
+            .json(&body);
+        self.send(req)?.json().context(parse_context)
+    }
+}
+
+fn approval_payload(period: Period, period_start: DateTime<Utc>) -> Value {
+    json!({
+        "period": period.as_api_str(),
+        "periodStart": to_api(period_start),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use super::*;
+
+    #[test]
+    fn approval_payload_uses_clockify_wire_names() {
+        let start = Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap();
+        let payload = approval_payload(Period::Monthly, start);
+
+        assert_eq!(payload["period"], "MONTHLY");
+        assert_eq!(payload["periodStart"], "2026-07-01T00:00:00Z");
     }
 }

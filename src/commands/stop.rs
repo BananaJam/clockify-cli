@@ -11,7 +11,10 @@ pub fn run(ctx: &Ctx, at: Option<String>, json: bool) -> Result<()> {
         Some(s) => parse_time(s)?,
         None => Utc::now(),
     };
-    match ctx.client.stop_timer(&ctx.workspace_id, &ctx.user_id, end)? {
+    match ctx
+        .client
+        .stop_timer(&ctx.workspace_id, &ctx.user_id, end)?
+    {
         Some(entry) => {
             if json {
                 let project = entry

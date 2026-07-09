@@ -10,6 +10,7 @@ pub mod skill;
 pub mod start;
 pub mod status;
 pub mod stop;
+pub mod submit;
 pub mod tasks;
 pub mod workspaces;
 
@@ -53,6 +54,13 @@ pub fn styled_id(id: &str, unique_len: usize) -> String {
 /// Like styled_id when the unique length is unknown (no lookback fetched):
 /// shows the last 6 characters without claiming any part is sufficient.
 pub fn short_id(id: &str) -> String {
-    let tail: String = id.chars().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect();
+    let tail: String = id
+        .chars()
+        .rev()
+        .take(6)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     format!("{}{}", "…".dimmed(), tail.yellow().dimmed())
 }

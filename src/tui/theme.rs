@@ -65,10 +65,17 @@ pub const TERMINAL: Theme = Theme {
 pub const THEMES: &[&Theme] = &[&NORD, &DRACULA, &GRUVBOX, &TERMINAL];
 
 pub fn by_name(name: &str) -> &'static Theme {
-    THEMES.iter().find(|t| t.name == name).copied().unwrap_or(&NORD)
+    THEMES
+        .iter()
+        .find(|t| t.name == name)
+        .copied()
+        .unwrap_or(&NORD)
 }
 
 pub fn next(current: &Theme) -> &'static Theme {
-    let idx = THEMES.iter().position(|t| t.name == current.name).unwrap_or(0);
+    let idx = THEMES
+        .iter()
+        .position(|t| t.name == current.name)
+        .unwrap_or(0);
     THEMES[(idx + 1) % THEMES.len()]
 }

@@ -21,7 +21,10 @@ const BAR_WIDTH: usize = 24;
 pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
     let today = Local::now().date_naive();
     let (from, to) = match (&args.from, &args.to) {
-        (Some(f), t) => (parse_date(f)?, t.as_deref().map(parse_date).transpose()?.unwrap_or(today)),
+        (Some(f), t) => (
+            parse_date(f)?,
+            t.as_deref().map(parse_date).transpose()?.unwrap_or(today),
+        ),
         (None, Some(_)) => bail!("--to requires --from"),
         (None, None) if args.month => (today.with_day(1).unwrap(), today),
         // Default to the current week.
@@ -56,7 +59,9 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
     let mut per_project: HashMap<Option<String>, Duration> = HashMap::new();
     let mut total = Duration::zero();
     for e in &entries {
-        *per_project.entry(e.project_id.clone()).or_insert_with(Duration::zero) += e.duration();
+        *per_project
+            .entry(e.project_id.clone())
+            .or_insert_with(Duration::zero) += e.duration();
         total += e.duration();
     }
 
@@ -90,13 +95,29 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
 
     let name_of = |id: &Option<String>| -> String {
         id.as_deref()
-            .map(|id| projects.get(id).map_or_else(|| id.to_string(), |p| p.name.clone()))
+            .map(|id| {
+                projects
+                    .get(id)
+                    .map_or_else(|| id.to_string(), |p| p.name.clone())
+            })
             .unwrap_or_else(|| "(no project)".to_string())
     };
-    let name_w = rows.iter().map(|(id, _)| name_of(id).chars().count()).max().unwrap_or(0);
-    let dur_w = rows.iter().map(|(_, d)| fmt_duration(*d).len()).max().unwrap_or(0);
+    let name_w = rows
+        .iter()
+        .map(|(id, _)| name_of(id).chars().count())
+        .max()
+        .unwrap_or(0);
+    let dur_w = rows
+        .iter()
+        .map(|(_, d)| fmt_duration(*d).len())
+        .max()
+        .unwrap_or(0);
 
-    println!("{}  {}", format!("Report {from} – {to}").bold(), format!("· {}", fmt_duration(total)).yellow());
+    println!(
+        "{}  {}",
+        format!("Report {from} – {to}").bold(),
+        format!("· {}", fmt_duration(total)).yellow()
+    );
     for (id, dur) in &rows {
         let project = id.as_deref().and_then(|id| projects.get(id));
         let name = format!("{:<name_w$}", name_of(id));
@@ -110,7 +131,11 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
             .round()
             .max(1.0) as usize;
         let bar = "█".repeat(bar_len);
-        let bar = if project.is_some() { in_project_color(&bar, project) } else { bar.dimmed() };
+        let bar = if project.is_some() {
+            in_project_color(&bar, project)
+        } else {
+            bar.dimmed()
+        };
         println!(
             "  {name}  {:>dur_w$}  {:>4}  {bar}",
             fmt_duration(*dur).bold(),
@@ -118,6 +143,10 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
         );
     }
     println!();
-    println!("{} entries, total {}", entries.len(), fmt_duration(total).bold());
+    println!(
+        "{} entries, total {}",
+        entries.len(),
+        fmt_duration(total).bold()
+    );
     Ok(())
 }

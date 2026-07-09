@@ -35,7 +35,10 @@ pub fn wizard() -> Result<()> {
     println!("{}", "Welcome to the Clockify CLI setup!".bold());
     println!();
     println!("You'll need a Clockify API key. To get one:");
-    println!("  1. Open {}", "https://app.clockify.me/user/preferences#advanced".cyan());
+    println!(
+        "  1. Open {}",
+        "https://app.clockify.me/user/preferences#advanced".cyan()
+    );
     println!("  2. Scroll to the {} section", "API".bold());
     println!("  3. Click {} and copy the key", "Generate".bold());
     println!();
@@ -56,14 +59,22 @@ pub fn wizard() -> Result<()> {
 
     let choice = Select::with_theme(&theme)
         .with_prompt("How do you want to provide the API key?")
-        .items(["Paste it manually", "Read it from 1Password (via the op CLI)"])
+        .items([
+            "Paste it manually",
+            "Read it from 1Password (via the op CLI)",
+        ])
         .default(0)
         .interact()?;
     let (client, user, source) = match choice {
         0 => prompt_for_key(&theme)?,
         _ => prompt_for_op_ref(&theme)?,
     };
-    println!("{} Hi, {} ({})!", "✓".green().bold(), user.name.bold(), user.email);
+    println!(
+        "{} Hi, {} ({})!",
+        "✓".green().bold(),
+        user.name.bold(),
+        user.email
+    );
 
     let workspaces = client.workspaces()?;
     let workspace = match workspaces.as_slice() {
@@ -105,14 +116,21 @@ pub fn wizard() -> Result<()> {
     cfg.save()?;
 
     println!();
-    println!("{} You're all set! Config saved to {}", "✓".green().bold(), Config::path()?.display());
+    println!(
+        "{} You're all set! Config saved to {}",
+        "✓".green().bold(),
+        Config::path()?.display()
+    );
     if cfg.api_key_ref.is_some() {
         println!("  Your API key stays in 1Password — only the reference is stored on disk.");
     }
     println!();
     println!("Try these next:");
     println!("  {}   list your projects", "clockify projects".cyan());
-    println!("  {}   start a timer", "clockify start \"writing code\" -p <project>".cyan());
+    println!(
+        "  {}   start a timer",
+        "clockify start \"writing code\" -p <project>".cyan()
+    );
     println!("  {}     see what's running", "clockify status".cyan());
     Ok(())
 }
@@ -158,7 +176,10 @@ fn prompt_for_op_ref(theme: &ColorfulTheme) -> Result<(api::Client, User, KeySou
         "Save your API key in 1Password first, then copy its {}:",
         "secret reference".bold()
     );
-    println!("  in the 1Password app, click the field's dropdown → {}", "Copy Secret Reference".bold());
+    println!(
+        "  in the 1Password app, click the field's dropdown → {}",
+        "Copy Secret Reference".bold()
+    );
     for attempt in 1..=3 {
         let reference: String = Input::with_theme(theme)
             .with_prompt("Secret reference (op://Vault/Item/field)")
@@ -178,7 +199,9 @@ fn prompt_for_op_ref(theme: &ColorfulTheme) -> Result<(api::Client, User, KeySou
                 eprintln!("{} {e:#}. Let's try again.", "✗".red());
                 continue;
             }
-            Err(e) => return Err(e.context("could not read the key from 1Password after 3 attempts")),
+            Err(e) => {
+                return Err(e.context("could not read the key from 1Password after 3 attempts"));
+            }
         };
         let client = api::Client::new(key)?;
         match client.current_user() {
@@ -204,7 +227,10 @@ pub fn status() -> Result<()> {
     } else if let Some(key) = &cfg.api_key {
         println!("API key:   {} (stored in the config file)", mask(key));
     } else {
-        println!("Not authenticated — run {} to get started.", "clockify auth".cyan());
+        println!(
+            "Not authenticated — run {} to get started.",
+            "clockify auth".cyan()
+        );
         return Ok(());
     }
     if let Some(name) = &cfg.user_name {

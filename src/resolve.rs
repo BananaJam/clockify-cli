@@ -22,7 +22,9 @@ pub const MIN_SUFFIX: usize = 1;
 /// The entries suffix references are resolved against (last 90 days).
 pub fn lookback_entries(ctx: &Ctx) -> Result<Vec<TimeEntry>> {
     let end = Utc::now();
-    let start = end.checked_sub_days(Days::new(SUFFIX_LOOKBACK_DAYS)).unwrap_or(end);
+    let start = end
+        .checked_sub_days(Days::new(SUFFIX_LOOKBACK_DAYS))
+        .unwrap_or(end);
     ctx.client.time_entries(
         &ctx.workspace_id,
         &ctx.user_id,
@@ -33,7 +35,11 @@ pub fn lookback_entries(ctx: &Ctx) -> Result<Vec<TimeEntry>> {
 }
 
 fn common_suffix_len(a: &str, b: &str) -> usize {
-    a.bytes().rev().zip(b.bytes().rev()).take_while(|(x, y)| x == y).count()
+    a.bytes()
+        .rev()
+        .zip(b.bytes().rev())
+        .take_while(|(x, y)| x == y)
+        .count()
 }
 
 /// For each id, the length of the shortest suffix that uniquely identifies it
@@ -76,8 +82,10 @@ pub fn entry(ctx: &Ctx, reference: &str) -> Result<TimeEntry> {
     }
 
     let entries = lookback_entries(ctx)?;
-    let matches: Vec<TimeEntry> =
-        entries.into_iter().filter(|e| e.id.ends_with(&needle)).collect();
+    let matches: Vec<TimeEntry> = entries
+        .into_iter()
+        .filter(|e| e.id.ends_with(&needle))
+        .collect();
     match matches.len() {
         1 => Ok(matches.into_iter().next().unwrap()),
         0 => bail!(
@@ -93,11 +101,18 @@ pub fn entry(ctx: &Ctx, reference: &str) -> Result<TimeEntry> {
                         e.id,
                         fmt_local_date(e.time_interval.start),
                         fmt_duration(e.duration()),
-                        if e.description.is_empty() { "(no description)" } else { &e.description }
+                        if e.description.is_empty() {
+                            "(no description)"
+                        } else {
+                            &e.description
+                        }
                     )
                 })
                 .collect();
-            bail!("'{needle}' matches several entries:\n{}", candidates.join("\n"))
+            bail!(
+                "'{needle}' matches several entries:\n{}",
+                candidates.join("\n")
+            )
         }
     }
 }
@@ -124,10 +139,15 @@ fn pick<'a, T>(
         .collect();
     match matches.as_slice() {
         [one] => Ok(one),
-        [] => bail!("no {kind} matches '{needle}' — run `clockify {kind}s` to see what's available"),
+        [] => {
+            bail!("no {kind} matches '{needle}' — run `clockify {kind}s` to see what's available")
+        }
         many => {
             let names: Vec<&str> = many.iter().map(|i| name(i)).collect();
-            bail!("'{needle}' is ambiguous — matching {kind}s: {}", names.join(", "))
+            bail!(
+                "'{needle}' is ambiguous — matching {kind}s: {}",
+                names.join(", ")
+            )
         }
     }
 }

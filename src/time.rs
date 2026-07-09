@@ -13,7 +13,9 @@ pub fn to_api(dt: DateTime<Utc>) -> String {
 /// Clockify interprets those in the user's profile timezone and ignores
 /// the offset marker, so send local wall-clock time, not UTC.
 pub fn to_api_query(dt: DateTime<Utc>) -> String {
-    dt.with_timezone(&Local).format("%Y-%m-%dT%H:%M:%SZ").to_string()
+    dt.with_timezone(&Local)
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 fn local_to_utc(naive: NaiveDateTime) -> Result<DateTime<Utc>> {
@@ -38,7 +40,9 @@ pub fn parse_time(s: &str) -> Result<DateTime<Utc>> {
     if let Some(rest) = s.strip_prefix("yesterday ")
         && let Ok(t) = NaiveTime::parse_from_str(rest.trim(), "%H:%M")
     {
-        let yesterday = today.checked_sub_days(Days::new(1)).context("date out of range")?;
+        let yesterday = today
+            .checked_sub_days(Days::new(1))
+            .context("date out of range")?;
         return local_to_utc(yesterday.and_time(t));
     }
     if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M") {
@@ -55,16 +59,21 @@ pub fn parse_date(s: &str) -> Result<NaiveDate> {
     let today = Local::now().date_naive();
     match s {
         "today" => Ok(today),
-        "yesterday" => today.checked_sub_days(Days::new(1)).context("date out of range"),
-        _ => NaiveDate::parse_from_str(s, "%Y-%m-%d")
-            .with_context(|| format!("could not parse date '{s}' — try YYYY-MM-DD, 'today', or 'yesterday'")),
+        "yesterday" => today
+            .checked_sub_days(Days::new(1))
+            .context("date out of range"),
+        _ => NaiveDate::parse_from_str(s, "%Y-%m-%d").with_context(|| {
+            format!("could not parse date '{s}' — try YYYY-MM-DD, 'today', or 'yesterday'")
+        }),
     }
 }
 
 /// UTC range covering the local days `from`..=`to` (inclusive).
 pub fn day_range(from: NaiveDate, to: NaiveDate) -> Result<(DateTime<Utc>, DateTime<Utc>)> {
     let start = local_to_utc(from.and_time(NaiveTime::MIN))?;
-    let end_day = to.checked_add_days(Days::new(1)).context("date out of range")?;
+    let end_day = to
+        .checked_add_days(Days::new(1))
+        .context("date out of range")?;
     let end = local_to_utc(end_day.and_time(NaiveTime::MIN))?;
     Ok((start, end))
 }
@@ -73,7 +82,11 @@ pub fn day_range(from: NaiveDate, to: NaiveDate) -> Result<(DateTime<Utc>, DateT
 pub fn fmt_duration(d: Duration) -> String {
     let mins = d.num_minutes().max(0);
     let (h, m) = (mins / 60, mins % 60);
-    if h > 0 { format!("{h}h {m:02}m") } else { format!("{m}m") }
+    if h > 0 {
+        format!("{h}h {m:02}m")
+    } else {
+        format!("{m}m")
+    }
 }
 
 /// e.g. "1h 23m 45s" — used for live elapsed time in `status`.
@@ -121,7 +134,10 @@ mod tests {
     fn parses_yesterday() {
         let dt = parse_time("yesterday 09:15").unwrap();
         let local = dt.with_timezone(&Local);
-        let expected = Local::now().date_naive().checked_sub_days(Days::new(1)).unwrap();
+        let expected = Local::now()
+            .date_naive()
+            .checked_sub_days(Days::new(1))
+            .unwrap();
         assert_eq!(local.date_naive(), expected);
         assert_eq!(local.format("%H:%M").to_string(), "09:15");
     }
@@ -130,7 +146,10 @@ mod tests {
     fn parses_full_date_time() {
         let dt = parse_time("2026-01-15 14:00").unwrap();
         let local = dt.with_timezone(&Local);
-        assert_eq!(local.format("%Y-%m-%d %H:%M").to_string(), "2026-01-15 14:00");
+        assert_eq!(
+            local.format("%Y-%m-%d %H:%M").to_string(),
+            "2026-01-15 14:00"
+        );
     }
 
     #[test]

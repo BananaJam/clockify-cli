@@ -42,7 +42,10 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<()> {
     // Clockify allows overlapping running entries via the API, so mimic the
     // web app: stop anything already running before starting the new timer.
     // In JSON mode this note goes to stderr — stdout must stay one document.
-    if let Some(stopped) = ctx.client.stop_timer(&ctx.workspace_id, &ctx.user_id, start)? {
+    if let Some(stopped) = ctx
+        .client
+        .stop_timer(&ctx.workspace_id, &ctx.user_id, start)?
+    {
         if args.json {
             eprintln!(
                 "Stopped previous timer: {} ({})",

@@ -68,7 +68,9 @@ pub fn install(project: bool, claude: bool, codex: bool) -> Result<()> {
             path.display()
         );
     }
-    println!("New agent sessions pick it up automatically — reinstall after upgrades to refresh it.");
+    println!(
+        "New agent sessions pick it up automatically — reinstall after upgrades to refresh it."
+    );
     Ok(())
 }
 

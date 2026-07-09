@@ -42,7 +42,9 @@ pub struct Config {
 fn config_file(xdg_config_home: Option<OsString>, home: Option<PathBuf>) -> Result<PathBuf> {
     let base = match xdg_config_home.filter(|d| !d.is_empty()) {
         Some(dir) => PathBuf::from(dir),
-        None => home.context("could not determine your home directory")?.join(".config"),
+        None => home
+            .context("could not determine your home directory")?
+            .join(".config"),
     };
     Ok(base.join("clockify").join("config.toml"))
 }
@@ -89,8 +91,9 @@ impl Config {
             return Ok(Some(key));
         }
         if let Some(reference) = &self.api_key_ref {
-            let key = op_read(reference)
-                .with_context(|| format!("could not get the API key from 1Password ({reference})"))?;
+            let key = op_read(reference).with_context(|| {
+                format!("could not get the API key from 1Password ({reference})")
+            })?;
             return Ok(Some(key));
         }
         Ok(self.api_key.clone())
@@ -98,7 +101,9 @@ impl Config {
 }
 
 pub fn api_key_from_env() -> Option<String> {
-    std::env::var("CLOCKIFY_API_KEY").ok().filter(|k| !k.trim().is_empty())
+    std::env::var("CLOCKIFY_API_KEY")
+        .ok()
+        .filter(|k| !k.trim().is_empty())
 }
 
 fn restrict_permissions(path: &std::path::Path) -> Result<()> {
@@ -123,16 +128,25 @@ fn migrate(old: &std::path::Path, new: &std::path::Path) -> Result<()> {
         fs::remove_file(old).ok();
     }
     restrict_permissions(new)?;
-    eprintln!("note: moved config from {} to {}", old.display(), new.display());
+    eprintln!(
+        "note: moved config from {} to {}",
+        old.display(),
+        new.display()
+    );
     Ok(())
 }
 
 /// Fetch a secret from 1Password via the `op` CLI.
 pub fn op_read(reference: &str) -> Result<String> {
-    let output = match Command::new("op").args(["read", "--no-newline", reference]).output() {
+    let output = match Command::new("op")
+        .args(["read", "--no-newline", reference])
+        .output()
+    {
         Ok(out) => out,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            bail!("the 1Password CLI (`op`) is not installed — get it with `brew install 1password-cli`")
+            bail!(
+                "the 1Password CLI (`op`) is not installed — get it with `brew install 1password-cli`"
+            )
         }
         Err(e) => return Err(e).context("failed to run the 1Password CLI"),
     };
@@ -155,7 +169,9 @@ pub fn op_available() -> Result<String> {
     let output = match Command::new("op").arg("--version").output() {
         Ok(out) => out,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            bail!("the 1Password CLI (`op`) is not installed — get it with `brew install 1password-cli`")
+            bail!(
+                "the 1Password CLI (`op`) is not installed — get it with `brew install 1password-cli`"
+            )
         }
         Err(e) => return Err(e).context("failed to run the 1Password CLI"),
     };
@@ -203,7 +219,12 @@ impl Ctx {
             .context("no user configured — run `clockify auth`")?;
         let default_project = cfg.default_projects.get(&workspace_id).cloned();
 
-        Ok(Ctx { client, workspace_id, user_id, default_project })
+        Ok(Ctx {
+            client,
+            workspace_id,
+            user_id,
+            default_project,
+        })
     }
 }
 

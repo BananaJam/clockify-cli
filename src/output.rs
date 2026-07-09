@@ -18,7 +18,10 @@ pub fn entry_json(e: &TimeEntry, project: Option<&Project>) -> Value {
 }
 
 pub fn print(value: &Value) {
-    println!("{}", serde_json::to_string_pretty(value).expect("serializing json values cannot fail"));
+    println!(
+        "{}",
+        serde_json::to_string_pretty(value).expect("serializing json values cannot fail")
+    );
 }
 
 #[cfg(test)]
@@ -36,7 +39,10 @@ mod tests {
             description: "fixing the parser".into(),
             project_id: Some("p1".into()),
             task_id: None,
-            time_interval: TimeInterval { start, end: Some(start + Duration::minutes(90)) },
+            time_interval: TimeInterval {
+                start,
+                end: Some(start + Duration::minutes(90)),
+            },
         };
         let project = Project {
             id: "p1".into(),

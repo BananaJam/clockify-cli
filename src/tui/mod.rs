@@ -14,8 +14,10 @@ use app::App;
 
 pub fn run() -> Result<()> {
     // Theme is known before any network happens — the splash matches it.
-    let theme_name =
-        Config::load().ok().and_then(|c| c.theme).unwrap_or_else(|| "nord".to_string());
+    let theme_name = Config::load()
+        .ok()
+        .and_then(|c| c.theme)
+        .unwrap_or_else(|| "nord".to_string());
     let theme = theme::by_name(&theme_name);
 
     let mut terminal = ratatui::init();

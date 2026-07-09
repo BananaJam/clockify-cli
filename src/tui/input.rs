@@ -6,7 +6,10 @@ pub struct Input {
 
 impl Input {
     pub fn new(initial: &str) -> Input {
-        Input { value: initial.to_string(), cursor: initial.chars().count() }
+        Input {
+            value: initial.to_string(),
+            cursor: initial.chars().count(),
+        }
     }
 
     pub fn value(&self) -> &str {
@@ -62,7 +65,10 @@ impl Input {
     pub fn split_at_cursor(&self) -> (String, String, String) {
         let chars: Vec<char> = self.value.chars().collect();
         let before: String = chars[..self.cursor].iter().collect();
-        let under: String = chars.get(self.cursor).map(|c| c.to_string()).unwrap_or_else(|| " ".to_string());
+        let under: String = chars
+            .get(self.cursor)
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| " ".to_string());
         let after: String = if self.cursor < chars.len() {
             chars[self.cursor + 1..].iter().collect()
         } else {

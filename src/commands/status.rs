@@ -18,7 +18,9 @@ pub fn short() {
 
 fn short_inner() -> Result<()> {
     let cfg = Config::load()?;
-    let Some(workspace_id) = cfg.workspace_id.clone() else { return Ok(()) };
+    let Some(workspace_id) = cfg.workspace_id.clone() else {
+        return Ok(());
+    };
 
     let now = status_cache::now_unix();
     if let Some(cached) = status_cache::load()
@@ -40,7 +42,11 @@ fn short_inner() -> Result<()> {
             .and_then(|id| ctx.client.project(&ctx.workspace_id, id).ok())
             .map(|p| p.name),
     });
-    status_cache::save(&CachedStatus { fetched_at: now, workspace_id, entry: entry.clone() });
+    status_cache::save(&CachedStatus {
+        fetched_at: now,
+        workspace_id,
+        entry: entry.clone(),
+    });
     print_short(entry.as_ref());
     Ok(())
 }
@@ -48,8 +54,11 @@ fn short_inner() -> Result<()> {
 fn print_short(entry: Option<&CachedEntry>) {
     let Some(entry) = entry else { return };
     let mins = (Utc::now() - entry.start).num_minutes().max(0);
-    let elapsed =
-        if mins >= 60 { format!("{}h{:02}m", mins / 60, mins % 60) } else { format!("{mins}m") };
+    let elapsed = if mins >= 60 {
+        format!("{}h{:02}m", mins / 60, mins % 60)
+    } else {
+        format!("{mins}m")
+    };
     let what = if !entry.description.is_empty() {
         entry.description.clone()
     } else {
@@ -85,7 +94,10 @@ pub fn run(ctx: &Ctx, json: bool) -> Result<()> {
         return Ok(());
     }
     let Some(entry) = running else {
-        println!("No timer is running. Start one with {}.", "clockify start".cyan());
+        println!(
+            "No timer is running. Start one with {}.",
+            "clockify start".cyan()
+        );
         return Ok(());
     };
 

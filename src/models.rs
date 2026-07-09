@@ -78,3 +78,38 @@ impl TimeEntry {
         end - self.time_interval.start
     }
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalRequest {
+    pub id: String,
+    #[serde(default)]
+    pub date_range: Option<ApprovalDateRange>,
+    #[serde(default)]
+    pub status: Option<ApprovalStatus>,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApprovalDateRange {
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApprovalStatus {
+    pub state: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalRequestRow {
+    pub approval_request: ApprovalRequest,
+    #[serde(default)]
+    pub time_entries: Vec<TimeEntry>,
+}

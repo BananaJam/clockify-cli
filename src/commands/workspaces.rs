@@ -22,10 +22,18 @@ pub fn list(ctx: &Ctx, json: bool) -> Result<()> {
         return Ok(());
     }
 
-    let name_w = workspaces.iter().map(|w| w.name.chars().count()).max().unwrap_or(0);
+    let name_w = workspaces
+        .iter()
+        .map(|w| w.name.chars().count())
+        .max()
+        .unwrap_or(0);
     for w in &workspaces {
         let current = w.id == ctx.workspace_id;
-        let marker = if current { "✓".green().bold() } else { " ".normal() };
+        let marker = if current {
+            "✓".green().bold()
+        } else {
+            " ".normal()
+        };
         let name = format!("{:<name_w$}", w.name);
         let name = if current { name.bold() } else { name.normal() };
         println!("{marker} {name}  {}", w.id.dimmed());
@@ -45,7 +53,10 @@ pub fn switch(ctx: &Ctx, needle: &str) -> Result<()> {
         [] => bail!("no workspace matches '{needle}' — run `clockify workspaces` to list them"),
         many => {
             let names: Vec<&str> = many.iter().map(|w| w.name.as_str()).collect();
-            bail!("'{needle}' is ambiguous — matching workspaces: {}", names.join(", "))
+            bail!(
+                "'{needle}' is ambiguous — matching workspaces: {}",
+                names.join(", ")
+            )
         }
     };
 
@@ -53,6 +64,10 @@ pub fn switch(ctx: &Ctx, needle: &str) -> Result<()> {
     cfg.workspace_id = Some(workspace.id);
     cfg.workspace_name = Some(workspace.name.clone());
     cfg.save()?;
-    println!("{} Switched to workspace {}", "✓".green().bold(), workspace.name.bold());
+    println!(
+        "{} Switched to workspace {}",
+        "✓".green().bold(),
+        workspace.name.bold()
+    );
     Ok(())
 }

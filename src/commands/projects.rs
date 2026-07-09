@@ -31,10 +31,17 @@ pub fn run(ctx: &Ctx, all: bool, json: bool) -> Result<()> {
     }
 
     if projects.is_empty() {
-        println!("No projects in this workspace{}.", if all { "" } else { " (try --all)" });
+        println!(
+            "No projects in this workspace{}.",
+            if all { "" } else { " (try --all)" }
+        );
         return Ok(());
     }
-    let name_w = projects.iter().map(|p| p.name.chars().count()).max().unwrap_or(0);
+    let name_w = projects
+        .iter()
+        .map(|p| p.name.chars().count())
+        .max()
+        .unwrap_or(0);
 
     // Group by client, like log groups by day; clientless projects last.
     let mut groups: Vec<(String, Vec<&Project>)> = Vec::new();
@@ -47,15 +54,21 @@ pub fn run(ctx: &Ctx, all: bool, json: bool) -> Result<()> {
         }
     }
     groups.sort_by(|(a, _), (b, _)| {
-        (a == "(no client)").cmp(&(b == "(no client)")).then(a.to_lowercase().cmp(&b.to_lowercase()))
+        (a == "(no client)")
+            .cmp(&(b == "(no client)"))
+            .then(a.to_lowercase().cmp(&b.to_lowercase()))
     });
 
     for (client, group) in &groups {
         println!(
             "{}  {}",
             client.bold(),
-            format!("· {} project{}", group.len(), if group.len() == 1 { "" } else { "s" })
-                .yellow()
+            format!(
+                "· {} project{}",
+                group.len(),
+                if group.len() == 1 { "" } else { "s" }
+            )
+            .yellow()
         );
         for p in group {
             let mut flags = Vec::new();
@@ -92,7 +105,11 @@ pub fn default(ctx: &Ctx, project: Option<&str>, clear: bool) -> Result<()> {
         match cfg.default_projects.remove(&ctx.workspace_id) {
             Some(old) => {
                 cfg.save()?;
-                println!("{} Cleared the default project (was {}).", "✓".green().bold(), old.name.bold());
+                println!(
+                    "{} Cleared the default project (was {}).",
+                    "✓".green().bold(),
+                    old.name.bold()
+                );
             }
             None => println!("No default project was set."),
         }
@@ -101,11 +118,7 @@ pub fn default(ctx: &Ctx, project: Option<&str>, clear: bool) -> Result<()> {
 
     let Some(needle) = project else {
         match &ctx.default_project {
-            Some(d) => println!(
-                "Default project: {}  {}",
-                d.name.bold(),
-                d.id.dimmed()
-            ),
+            Some(d) => println!("Default project: {}  {}", d.name.bold(), d.id.dimmed()),
             None => println!(
                 "No default project set — set one with {}.",
                 "clockify projects default <project>".bold()
@@ -116,8 +129,13 @@ pub fn default(ctx: &Ctx, project: Option<&str>, clear: bool) -> Result<()> {
 
     let p = resolve::project(ctx, needle)?;
     let mut cfg = Config::load()?;
-    cfg.default_projects
-        .insert(ctx.workspace_id.clone(), DefaultProject { id: p.id.clone(), name: p.name.clone() });
+    cfg.default_projects.insert(
+        ctx.workspace_id.clone(),
+        DefaultProject {
+            id: p.id.clone(),
+            name: p.name.clone(),
+        },
+    );
     cfg.save()?;
     println!(
         "{} New entries now default to {}.",
