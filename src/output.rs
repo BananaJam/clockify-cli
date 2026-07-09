@@ -22,6 +22,7 @@ pub fn expense_json(e: &Expense) -> Value {
         "id": e.id,
         "date": e.date.to_string(),
         "total": e.total,
+        "currency": "USD",
         "quantity": e.quantity,
         "billable": e.billable,
         "locked": e.locked,

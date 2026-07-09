@@ -390,12 +390,9 @@ pub fn resolve_category_from_slice(
     pick_category(categories, reference).cloned()
 }
 
+/// Format a USD amount for display, e.g. `$12.50`.
 pub fn format_amount(amount: f64) -> String {
-    if (amount.fract()).abs() < f64::EPSILON {
-        format!("{amount:.0}")
-    } else {
-        format!("{amount:.2}")
-    }
+    format!("${amount:.2}")
 }
 
 fn list_range(
@@ -607,6 +604,7 @@ fn print_submit_result(
             "to": summary.window.to.to_string(),
             "expense_count": summary.expense_count,
             "total_amount": summary.total,
+            "currency": "USD",
             "resubmitted": resubmit,
             "workspace_id": approval.workspace_id,
             "date_range": approval.date_range.as_ref().map(|range| json!({
@@ -668,8 +666,8 @@ mod tests {
     }
 
     #[test]
-    fn amount_format_keeps_cents_when_needed() {
-        assert_eq!(format_amount(12.0), "12");
-        assert_eq!(format_amount(12.5), "12.50");
+    fn amount_format_shows_usd_with_cents() {
+        assert_eq!(format_amount(12.0), "$12.00");
+        assert_eq!(format_amount(12.5), "$12.50");
     }
 }

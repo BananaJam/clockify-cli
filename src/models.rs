@@ -96,7 +96,8 @@ pub struct Expense {
     pub notes: Option<String>,
     #[serde(default)]
     pub quantity: Option<f64>,
-    #[serde(default)]
+    /// Total amount in USD; the Clockify API sends cents.
+    #[serde(default, deserialize_with = "deserialize_cents_as_usd")]
     pub total: f64,
     #[serde(default)]
     pub billable: bool,
@@ -180,6 +181,7 @@ pub struct ExpenseCategoriesWithCount {
 
 #[derive(Debug, Clone)]
 pub struct ExpenseDraft {
+    /// Amount in USD; converted to cents when sent to the API.
     pub amount: f64,
     pub category_id: String,
     pub date: DateTime<Utc>,
@@ -217,6 +219,25 @@ impl ExpenseChangeField {
             ExpenseChangeField::File => "FILE",
         }
     }
+}
+
+/// Whole cents for the Clockify API from a USD amount.
+pub fn usd_to_cents(usd: f64) -> i64 {
+    (usd * 100.0).round() as i64
+}
+
+fn deserialize_cents_as_usd<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(f64::deserialize(deserializer)? / 100.0)
+}
+
+fn deserialize_opt_cents_as_usd<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<f64>::deserialize(deserializer)?.map(|cents| cents / 100.0))
 }
 
 fn deserialize_expense_date<'de, D>(deserializer: D) -> Result<NaiveDate, D::Error>
@@ -281,6 +302,7 @@ pub struct ApprovalRequestRow {
     pub time_entries: Vec<serde_json::Value>,
     #[serde(default)]
     pub expenses: Vec<Expense>,
-    #[serde(default)]
+    /// Total expense amount in USD; the Clockify API sends cents.
+    #[serde(default, deserialize_with = "deserialize_opt_cents_as_usd")]
     pub expense_total: Option<f64>,
 }

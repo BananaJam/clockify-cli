@@ -190,6 +190,7 @@ fn period_bounds_for(
 fn parse_expense_amount(value: &str) -> Result<f64> {
     let amount: f64 = value
         .trim()
+        .trim_start_matches('$')
         .parse()
         .with_context(|| format!("could not parse amount '{value}'"))?;
     if amount <= 0.0 {
@@ -1121,7 +1122,7 @@ impl App {
             title: " Add expense ",
             fields: vec![
                 Field::Text {
-                    label: "Amount",
+                    label: "Amount ($)",
                     input: Input::new(""),
                 },
                 Field::Text {
@@ -1168,8 +1169,8 @@ impl App {
             title: " Edit expense ",
             fields: vec![
                 Field::Text {
-                    label: "Amount",
-                    input: Input::new(&expenses::format_amount(expense.total)),
+                    label: "Amount ($)",
+                    input: Input::new(&format!("{:.2}", expense.total)),
                 },
                 Field::Text {
                     label: "Category",

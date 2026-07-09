@@ -277,7 +277,7 @@ enum ExpensesCmd {
     },
     /// Add an expense
     Add {
-        /// Expense amount
+        /// Expense amount in USD, e.g. 12.50
         #[arg(long)]
         amount: f64,
         /// Expense category name or ID
@@ -311,7 +311,7 @@ enum ExpensesCmd {
     Edit {
         /// Expense ID or unique id suffix
         id: String,
-        /// New amount
+        /// New amount in USD, e.g. 12.50
         #[arg(long)]
         amount: Option<f64>,
         /// New expense category name or ID
