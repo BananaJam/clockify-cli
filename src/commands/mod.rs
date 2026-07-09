@@ -3,6 +3,7 @@ pub mod auth;
 pub mod delete;
 pub mod discard;
 pub mod edit;
+pub mod expenses;
 pub mod log;
 pub mod projects;
 pub mod report;

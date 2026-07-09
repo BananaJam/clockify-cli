@@ -9,7 +9,7 @@ use ratatui::widgets::{
 
 use super::app::{App, Field, Form, Mode, TABS};
 use super::theme::Theme;
-use crate::models::{Project, TimeEntry};
+use crate::models::{Expense, Project, TimeEntry};
 use crate::time::{fmt_duration, fmt_duration_secs, fmt_local_time};
 
 pub fn draw_splash(f: &mut Frame, t: &Theme) {
@@ -59,7 +59,8 @@ pub fn draw(f: &mut Frame, app: &App) {
     match app.tab {
         0 => draw_log(f, app, rows[4]),
         1 => draw_report(f, app, rows[4]),
-        2 => draw_projects(f, app, rows[4]),
+        2 => draw_expenses(f, app, rows[4]),
+        3 => draw_projects(f, app, rows[4]),
         _ => draw_workspaces(f, app, rows[4]),
     }
     draw_status(f, app, rows[5]);
@@ -448,6 +449,163 @@ fn draw_report(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(Paragraph::new(lines), rows[2]);
 }
 
+fn draw_expenses(f: &mut Frame, app: &App, area: Rect) {
+    let t = app.theme;
+    let rows = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(2),
+        Constraint::Min(0),
+    ])
+    .split(area);
+    f.render_widget(
+        Paragraph::new(Span::styled(
+            format!(" {}", report_label(app)),
+            Style::new().fg(t.dim),
+        )),
+        rows[0],
+    );
+
+    let total: f64 = app.expenses.iter().map(|expense| expense.total).sum();
+    let mut summary = vec![Line::from(vec![
+        Span::styled(" total ".to_string(), Style::new().fg(t.dim)),
+        Span::styled(
+            crate::commands::expenses::format_amount(total),
+            Style::new().fg(t.fg).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("  across {} expenses", app.expenses.len()),
+            Style::new().fg(t.dim),
+        ),
+    ])];
+    if let Some(row) = app.expense_approval() {
+        let state = row
+            .approval_request
+            .status
+            .as_ref()
+            .map(|status| status.state.as_str())
+            .unwrap_or("submitted");
+        let total = row.expense_total.unwrap_or_else(|| {
+            row.expenses
+                .iter()
+                .map(|expense| expense.total)
+                .sum::<f64>()
+        });
+        summary.push(Line::from(vec![
+            Span::styled(" approval ".to_string(), Style::new().fg(t.dim)),
+            Span::styled(
+                state.to_string(),
+                Style::new().fg(t.yellow).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(
+                    " · {} expenses · {}",
+                    row.expenses.len(),
+                    crate::commands::expenses::format_amount(total)
+                ),
+                Style::new().fg(t.dim),
+            ),
+        ]));
+    }
+    f.render_widget(Paragraph::new(summary), rows[1]);
+
+    if app.expenses.is_empty() {
+        let text = if app.expenses_loading {
+            "loading…"
+        } else {
+            "no expenses in this period"
+        };
+        f.render_widget(
+            Paragraph::new(Span::styled(text, Style::new().fg(t.dim))).alignment(Alignment::Center),
+            rows[2],
+        );
+        return;
+    }
+
+    let amount_w = app
+        .expenses
+        .iter()
+        .map(|expense| crate::commands::expenses::format_amount(expense.total).len())
+        .max()
+        .unwrap_or(0);
+    let category_w = app
+        .expenses
+        .iter()
+        .map(|expense| {
+            expense
+                .category_name()
+                .unwrap_or("(no category)")
+                .chars()
+                .count()
+        })
+        .max()
+        .unwrap_or(0)
+        .min(24);
+    let project_w = app
+        .expenses
+        .iter()
+        .map(|expense| expense.project_name().unwrap_or("").chars().count())
+        .max()
+        .unwrap_or(0)
+        .min(24);
+
+    let items: Vec<ListItem> = app
+        .expenses
+        .iter()
+        .map(|expense| ListItem::new(expense_line(app, expense, amount_w, category_w, project_w)))
+        .collect();
+    let mut state = ListState::default();
+    state.select(Some(app.sel_expense));
+    let list = List::new(items).highlight_style(Style::new().bg(t.selection_bg));
+    f.render_stateful_widget(list, rows[2], &mut state);
+}
+
+fn expense_line(
+    app: &App,
+    expense: &Expense,
+    amount_w: usize,
+    category_w: usize,
+    project_w: usize,
+) -> Line<'static> {
+    let t = app.theme;
+    let category = expense.category_name().unwrap_or("(no category)");
+    let project = expense.project_name().unwrap_or("");
+    let notes = expense
+        .notes
+        .as_deref()
+        .filter(|notes| !notes.is_empty())
+        .unwrap_or("");
+    let file = expense
+        .file_name
+        .as_deref()
+        .or(expense.file_id.as_deref())
+        .unwrap_or("");
+    let billable = if expense.billable { "billable" } else { "" };
+    Line::from(vec![
+        Span::styled(format!("   {}", expense.date), Style::new().fg(t.fg)),
+        Span::styled(
+            format!(
+                "  {:>amount_w$}",
+                crate::commands::expenses::format_amount(expense.total)
+            ),
+            Style::new().fg(t.fg).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("  {:<category_w$}", truncate(category, category_w.max(1))),
+            Style::new().fg(t.accent),
+        ),
+        Span::styled(
+            format!("  {:<project_w$}", truncate(project, project_w.max(1))),
+            Style::new().fg(t.yellow),
+        ),
+        Span::styled(format!("  {:<8}", billable), Style::new().fg(t.dim)),
+        Span::styled(
+            format!("  {:<12}", truncate(file, 12)),
+            Style::new().fg(t.dim),
+        ),
+        Span::styled(format!("  {}", truncate(notes, 36)), Style::new().fg(t.fg)),
+    ])
+}
+
 fn draw_projects(f: &mut Frame, app: &App, area: Rect) {
     let t = app.theme;
     if app.projects.is_empty() {
@@ -572,7 +730,10 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
             1 => {
                 "q quit · tab views · h/l period · m month · w week · S submit · R resubmit · s start · x stop · t theme"
             }
-            3 => "q quit · tab views · j/k move · enter switch workspace · t theme",
+            2 => {
+                "q quit · tab views · j/k move · h/l period · m month · w week · a add · e edit · d delete · S submit · R resubmit"
+            }
+            4 => "q quit · tab views · j/k move · enter switch workspace · t theme",
             _ => "q quit · tab views · s start · x stop · a add · t theme",
         },
         Mode::Confirm { .. } => "y confirm · n/esc cancel",

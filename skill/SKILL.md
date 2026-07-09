@@ -1,6 +1,6 @@
 ---
 name: clockify
-description: Track time with the Clockify CLI - start and stop timers, add, edit and delete time entries, view logs and per-project reports, and submit time for approval. Use when the user asks to track time, start or stop a timer, log hours, check what's running, review their timesheet, or submit time.
+description: Track time and expenses with the Clockify CLI - start and stop timers, add, edit and delete time entries and expenses, view logs and reports, and submit time or expenses for approval. Use when the user asks to track time, manage expenses, start or stop a timer, log hours, check what's running, review their timesheet, or submit approvals.
 ---
 
 # Clockify CLI
@@ -12,9 +12,10 @@ description: Track time with the Clockify CLI - start and stop timers, add, edit
 - Pass `--json` on every command below to get machine-readable output; without it
   you get styled human output.
 - Never run bare `clockify` — that opens an interactive TUI.
-- `delete` and `discard` prompt for confirmation; always pass `-y`.
-- `submit` prompts for confirmation; pass `-y` when the user clearly asked to
-  submit time for approval.
+- `delete`, `discard`, and expense deletion prompt for confirmation; always pass
+  `-y`.
+- `submit` and `expenses submit` prompt for confirmation; pass `-y` when the user
+  clearly asked to submit for approval.
 - If a command fails with "invalid API key" or a missing-config error, stop and
   ask the user to run `clockify auth` themselves — setup is interactive.
 
@@ -31,6 +32,12 @@ clockify report --week --json                 # time per project (also --month)
 clockify submit -y --json                     # submit this month's time approval
 clockify submit --week -y --json              # submit this week's time approval
 clockify submit --resubmit -y --json          # resubmit rejected/withdrawn time
+clockify expenses --month --json              # list expenses
+clockify expenses categories --json
+clockify expenses add --amount 12.50 --category meals --date today -p <project> --file <path> --json
+clockify expenses edit <id> --amount 14 --file <path> --json
+clockify expenses delete <id> -y --json
+clockify expenses submit -y --json            # submit this month's expenses
 clockify edit <id> -d "text" -p <project> --from <t> --to <t> --json
 clockify delete <id> -y --json
 clockify projects --json
@@ -69,10 +76,20 @@ A time entry (returned by status/log/start/stop/add/edit):
 ```
 
 `project` and `end` may be null; `end: null` means the timer is running.
+An expense (returned by expenses list/show/add/edit):
+
+```json
+{"id": "…", "date": "2026-07-04", "total": 12.5,
+ "category": {"id": "…", "name": "Meals"},
+ "project": {"id": "…", "name": "Backend"}, "file": {"id": "…", "name": "receipt.jpg"}}
+```
+
 `delete`/`discard` return `{"deleted": id}` / `{"discarded": id}`; `report`
 returns `{"from", "to", "total_seconds", "projects": [{"id", "name",
 "duration_seconds", "percent"}]}`. `submit` returns `{"id", "state", "period",
-"from", "to", "entry_count", "total_seconds", "resubmitted"}`.
+"from", "to", "entry_count", "total_seconds", "resubmitted"}`. `expenses submit`
+returns `{"id", "state", "period", "from", "to", "expense_count",
+"total_amount", "resubmitted"}`.
 
 ## Caveats
 
@@ -80,5 +97,8 @@ returns `{"from", "to", "total_seconds", "projects": [{"id", "name",
   fails with "Project is required", ask the user which project to use.
 - Billability follows the project's default when an entry changes project —
   the CLI handles this; don't try to set it separately.
-- Clockify submits time and expenses separately. This CLI submits time entries
-  only; it does not create expense approval requests.
+- Clockify submits time and expenses separately. Use `submit` for time entries
+  and `expenses submit` or `submit --expenses` for expenses.
+- Many workspaces require receipt files for expenses. If Clockify rejects an
+  expense because a file is missing, ask the user for a receipt path and pass
+  `--file <path>`.

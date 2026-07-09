@@ -1,13 +1,15 @@
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
+use reqwest::blocking::multipart::{Form, Part};
 use reqwest::blocking::{Client as HttpClient, RequestBuilder, Response};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::commands::submit::Period;
 use crate::models::{
-    ApprovalRequest, ApprovalRequestRow, Project, Task, TimeEntry, User, Workspace,
+    ApprovalRequest, ApprovalRequestRow, Expense, ExpenseCategoriesWithCount, ExpenseCategory,
+    ExpenseDraft, ExpensesAndTotals, Project, Task, TimeEntry, User, Workspace,
 };
 use crate::time::{to_api, to_api_query};
 
@@ -25,11 +27,16 @@ fn check(resp: Response) -> Result<Response> {
     if status.is_success() {
         return Ok(resp);
     }
+    let path = resp.url().path().to_string();
     let body = resp.text().unwrap_or_default();
     let msg = serde_json::from_str::<Value>(&body)
         .ok()
         .and_then(|v| v.get("message").and_then(|m| m.as_str()).map(String::from))
         .unwrap_or(body);
+    let lower = msg.to_lowercase();
+    if path.contains("/expenses") && (lower.contains("file") || lower.contains("receipt")) {
+        bail!("Clockify requires a receipt file for this expense; pass --file <path>");
+    }
     match status {
         StatusCode::UNAUTHORIZED => {
             bail!("invalid API key — run `clockify auth` to set up your credentials")
@@ -207,6 +214,83 @@ impl Client {
         Ok(())
     }
 
+    pub fn expenses(&self, ws: &str, user: &str) -> Result<Vec<Expense>> {
+        let mut all = Vec::new();
+        let mut page = 1usize;
+        loop {
+            let query = [
+                ("user-id", user.to_string()),
+                ("page", page.to_string()),
+                ("page-size", PAGE_SIZE.to_string()),
+            ];
+            let batch: ExpensesAndTotals =
+                self.get_json(&format!("/workspaces/{ws}/expenses"), &query)?;
+            let count = batch.expenses.count;
+            let n = batch.expenses.expenses.len();
+            all.extend(batch.expenses.expenses);
+            if n < PAGE_SIZE || all.len() >= count {
+                return Ok(all);
+            }
+            page += 1;
+        }
+    }
+
+    pub fn expense(&self, ws: &str, id: &str) -> Result<Expense> {
+        self.get_json(&format!("/workspaces/{ws}/expenses/{id}"), &[])
+    }
+
+    pub fn expense_categories(&self, ws: &str, archived: bool) -> Result<Vec<ExpenseCategory>> {
+        let mut all = Vec::new();
+        let mut page = 1usize;
+        loop {
+            let query = [
+                ("archived", archived.to_string()),
+                ("page", page.to_string()),
+                ("page-size", PAGE_SIZE.to_string()),
+            ];
+            let batch: ExpenseCategoriesWithCount =
+                self.get_json(&format!("/workspaces/{ws}/expenses/categories"), &query)?;
+            let count = batch.count;
+            let n = batch.categories.len();
+            all.extend(batch.categories);
+            if n < PAGE_SIZE || all.len() >= count {
+                all.sort_by_key(|c| c.name.to_lowercase());
+                return Ok(all);
+            }
+            page += 1;
+        }
+    }
+
+    pub fn create_expense(&self, ws: &str, draft: &ExpenseDraft) -> Result<Expense> {
+        let req = self
+            .request(reqwest::Method::POST, &format!("/workspaces/{ws}/expenses"))
+            .multipart(expense_form(draft)?);
+        self.send(req)?
+            .json()
+            .context("failed to parse the created expense")
+    }
+
+    pub fn update_expense(&self, ws: &str, id: &str, draft: &ExpenseDraft) -> Result<Expense> {
+        let req = self
+            .request(
+                reqwest::Method::PUT,
+                &format!("/workspaces/{ws}/expenses/{id}"),
+            )
+            .multipart(expense_form(draft)?);
+        self.send(req)?
+            .json()
+            .context("failed to parse the updated expense")
+    }
+
+    pub fn delete_expense(&self, ws: &str, id: &str) -> Result<()> {
+        let req = self.request(
+            reqwest::Method::DELETE,
+            &format!("/workspaces/{ws}/expenses/{id}"),
+        );
+        self.send(req)?;
+        Ok(())
+    }
+
     pub fn approval_requests(
         &self,
         ws: &str,
@@ -270,6 +354,33 @@ fn approval_payload(period: Period, period_start: DateTime<Utc>) -> Value {
         "period": period.as_api_str(),
         "periodStart": to_api(period_start),
     })
+}
+
+fn expense_form(draft: &ExpenseDraft) -> Result<Form> {
+    let mut form = Form::new()
+        .text("amount", draft.amount.to_string())
+        .text("categoryId", draft.category_id.clone())
+        .text("date", to_api(draft.date))
+        .text("userId", draft.user_id.clone())
+        .text("billable", draft.billable.to_string());
+    if let Some(project_id) = &draft.project_id {
+        form = form.text("projectId", project_id.clone());
+    }
+    if let Some(task_id) = &draft.task_id {
+        form = form.text("taskId", task_id.clone());
+    }
+    if let Some(notes) = &draft.notes {
+        form = form.text("notes", notes.clone());
+    }
+    for field in &draft.change_fields {
+        form = form.text("changeFields", field.as_api_str().to_string());
+    }
+    if let Some(path) = &draft.file {
+        let part = Part::file(path)
+            .with_context(|| format!("could not read receipt file '{}'", path.display()))?;
+        form = form.part("file", part);
+    }
+    Ok(form)
 }
 
 #[cfg(test)]

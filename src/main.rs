@@ -156,6 +156,26 @@ enum Cmd {
         #[arg(short, long)]
         yes: bool,
     },
+    /// List and manage expenses
+    Expenses {
+        /// Only today's expenses (the default)
+        #[arg(long, conflicts_with_all = ["week", "month", "from", "to"])]
+        today: bool,
+        /// Expenses from Monday through today
+        #[arg(long, conflicts_with_all = ["month", "from", "to"])]
+        week: bool,
+        /// Expenses from the first of this month through today
+        #[arg(long, conflicts_with_all = ["from", "to"])]
+        month: bool,
+        /// Start date: YYYY-MM-DD, "today", or "yesterday"
+        #[arg(long)]
+        from: Option<String>,
+        /// End date (default: today)
+        #[arg(long)]
+        to: Option<String>,
+        #[command(subcommand)]
+        cmd: Option<ExpensesCmd>,
+    },
     /// Time-per-project summary (default: this week)
     Report {
         /// This week (Monday through today, the default)
@@ -173,6 +193,9 @@ enum Cmd {
     },
     /// Submit a time approval request (default: this month)
     Submit {
+        /// Submit expenses instead of time entries
+        #[arg(long)]
+        expenses: bool,
         /// Submit this week (Monday through Sunday)
         #[arg(long, conflicts_with_all = ["month", "from", "period"])]
         week: bool,
@@ -241,6 +264,109 @@ enum WorkspacesCmd {
     Switch {
         /// Workspace name or ID
         workspace: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ExpensesCmd {
+    /// List expense categories
+    Categories {
+        /// Include archived categories
+        #[arg(long)]
+        all: bool,
+    },
+    /// Add an expense
+    Add {
+        /// Expense amount
+        #[arg(long)]
+        amount: f64,
+        /// Expense category name or ID
+        #[arg(long)]
+        category: String,
+        /// Expense date: YYYY-MM-DD, "today", or "yesterday"
+        #[arg(long)]
+        date: String,
+        /// Project name or ID
+        #[arg(short, long)]
+        project: String,
+        /// Task name or ID
+        #[arg(short, long)]
+        task: Option<String>,
+        /// Expense notes
+        #[arg(long)]
+        notes: Option<String>,
+        /// Mark the expense billable
+        #[arg(long)]
+        billable: bool,
+        /// Receipt file path
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// Show one expense
+    Show {
+        /// Expense ID or unique id suffix
+        id: String,
+    },
+    /// Edit an expense
+    Edit {
+        /// Expense ID or unique id suffix
+        id: String,
+        /// New amount
+        #[arg(long)]
+        amount: Option<f64>,
+        /// New expense category name or ID
+        #[arg(long)]
+        category: Option<String>,
+        /// New expense date: YYYY-MM-DD, "today", or "yesterday"
+        #[arg(long)]
+        date: Option<String>,
+        /// New project name or ID
+        #[arg(short, long)]
+        project: Option<String>,
+        /// New task name or ID
+        #[arg(short, long)]
+        task: Option<String>,
+        /// New notes; pass an empty string to clear
+        #[arg(long)]
+        notes: Option<String>,
+        /// Mark the expense billable
+        #[arg(long, conflicts_with = "non_billable")]
+        billable: bool,
+        /// Mark the expense non-billable
+        #[arg(long)]
+        non_billable: bool,
+        /// Replacement receipt file path
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// Delete an expense
+    Delete {
+        /// Expense ID or unique id suffix
+        id: String,
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
+    },
+    /// Submit an expense approval request
+    Submit {
+        /// Submit this week (Monday through Sunday)
+        #[arg(long, conflicts_with_all = ["month", "from", "period"])]
+        week: bool,
+        /// Submit this month (the default)
+        #[arg(long, conflicts_with_all = ["week", "from", "period"])]
+        month: bool,
+        /// Approval period start date: YYYY-MM-DD, "today", or "yesterday"
+        #[arg(long)]
+        from: Option<String>,
+        /// Approval period used with --from, or to override the default
+        #[arg(long, value_enum)]
+        period: Option<commands::submit::Period>,
+        /// Re-submit rejected or withdrawn expenses instead of creating a new request
+        #[arg(long)]
+        resubmit: bool,
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
     },
 }
 
@@ -353,6 +479,122 @@ fn run() -> Result<()> {
             },
         ),
         Cmd::Delete { id, yes } => commands::delete::run(&Ctx::load()?, &id, yes, json),
+        // `today` is the default range; the flag exists only for explicitness.
+        Cmd::Expenses {
+            today: _,
+            week,
+            month,
+            from,
+            to,
+            cmd: None,
+        } => commands::expenses::list(
+            &Ctx::load()?,
+            commands::expenses::ListArgs {
+                week,
+                month,
+                from,
+                to,
+                json,
+            },
+        ),
+        Cmd::Expenses {
+            cmd: Some(ExpensesCmd::Categories { all }),
+            ..
+        } => commands::expenses::categories(&Ctx::load()?, all, json),
+        Cmd::Expenses {
+            cmd:
+                Some(ExpensesCmd::Add {
+                    amount,
+                    category,
+                    date,
+                    project,
+                    task,
+                    notes,
+                    billable,
+                    file,
+                }),
+            ..
+        } => commands::expenses::add(
+            &Ctx::load()?,
+            commands::expenses::AddArgs {
+                amount,
+                category,
+                date,
+                project,
+                task,
+                notes,
+                billable,
+                file,
+                json,
+            },
+        ),
+        Cmd::Expenses {
+            cmd: Some(ExpensesCmd::Show { id }),
+            ..
+        } => commands::expenses::show(&Ctx::load()?, &id, json),
+        Cmd::Expenses {
+            cmd:
+                Some(ExpensesCmd::Edit {
+                    id,
+                    amount,
+                    category,
+                    date,
+                    project,
+                    task,
+                    notes,
+                    billable,
+                    non_billable,
+                    file,
+                }),
+            ..
+        } => commands::expenses::edit(
+            &Ctx::load()?,
+            commands::expenses::EditArgs {
+                id,
+                amount,
+                category,
+                date,
+                project,
+                task,
+                notes,
+                billable: if billable {
+                    Some(true)
+                } else if non_billable {
+                    Some(false)
+                } else {
+                    None
+                },
+                file,
+                json,
+            },
+        ),
+        Cmd::Expenses {
+            cmd: Some(ExpensesCmd::Delete { id, yes }),
+            ..
+        } => commands::expenses::delete(&Ctx::load()?, &id, yes, json),
+        Cmd::Expenses {
+            cmd:
+                Some(ExpensesCmd::Submit {
+                    week,
+                    month,
+                    from,
+                    period,
+                    resubmit,
+                    yes,
+                }),
+            ..
+        } => commands::expenses::submit(
+            &Ctx::load()?,
+            commands::expenses::SubmitArgs {
+                week,
+                month,
+                from,
+                period,
+                resubmit,
+                yes,
+                json,
+            },
+        ),
         // `week` is the default range; the flag exists only for explicitness.
         Cmd::Report {
             week: _,
@@ -369,24 +611,42 @@ fn run() -> Result<()> {
             },
         ),
         Cmd::Submit {
+            expenses,
             week,
             month,
             from,
             period,
             resubmit,
             yes,
-        } => commands::submit::run(
-            &Ctx::load()?,
-            commands::submit::Args {
-                week,
-                month,
-                from,
-                period,
-                resubmit,
-                yes,
-                json,
-            },
-        ),
+        } => {
+            if expenses {
+                commands::expenses::submit(
+                    &Ctx::load()?,
+                    commands::expenses::SubmitArgs {
+                        week,
+                        month,
+                        from,
+                        period,
+                        resubmit,
+                        yes,
+                        json,
+                    },
+                )
+            } else {
+                commands::submit::run(
+                    &Ctx::load()?,
+                    commands::submit::Args {
+                        week,
+                        month,
+                        from,
+                        period,
+                        resubmit,
+                        yes,
+                        json,
+                    },
+                )
+            }
+        }
         Cmd::Skill {
             cmd:
                 SkillCmd::Install {

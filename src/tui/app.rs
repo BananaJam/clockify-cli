@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use anyhow::{Context as _, Result, bail};
@@ -8,12 +9,16 @@ use serde_json::json;
 
 use super::input::Input;
 use super::theme::{self, Theme};
+use crate::commands::expenses::{self, ExpenseSubmissionSummary};
 use crate::commands::submit::{self, Period, PeriodWindow, SubmissionSummary};
 use crate::config::{Config, Ctx};
-use crate::models::{ApprovalRequestRow, Project, TimeEntry, Workspace};
-use crate::time::{day_range, fmt_duration, parse_time, to_api};
+use crate::models::{
+    ApprovalRequestRow, Expense, ExpenseCategory, ExpenseChangeField, ExpenseDraft, Project,
+    TimeEntry, Workspace,
+};
+use crate::time::{day_range, fmt_duration, parse_date, parse_time, to_api};
 
-pub const TABS: &[&str] = &["Log", "Report", "Projects", "Workspaces"];
+pub const TABS: &[&str] = &["Log", "Report", "Expenses", "Projects", "Workspaces"];
 
 pub enum Mode {
     Normal,
@@ -21,7 +26,7 @@ pub enum Mode {
         message: String,
         action: ConfirmAction,
     },
-    Form(Form),
+    Form(Box<Form>),
 }
 
 #[derive(Clone)]
@@ -32,6 +37,11 @@ pub enum ConfirmAction {
         summary: SubmissionSummary,
         resubmit: bool,
     },
+    DeleteExpense(String),
+    SubmitExpenses {
+        summary: ExpenseSubmissionSummary,
+        resubmit: bool,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -39,6 +49,8 @@ pub enum FormKind {
     Start,
     Add,
     Edit,
+    ExpenseAdd,
+    ExpenseEdit,
 }
 
 pub enum Field {
@@ -63,6 +75,7 @@ pub struct Form {
     pub focus: usize,
     pub error: Option<String>,
     pub entry: Option<TimeEntry>,
+    pub expense: Option<Expense>,
 }
 
 /// Results sent back from background fetch threads. `epoch` guards against
@@ -81,6 +94,17 @@ enum Msg {
     Approvals {
         epoch: u64,
         result: Result<Vec<ApprovalRequestRow>>,
+    },
+    Expenses {
+        epoch: u64,
+        period: Period,
+        week_offset: i64,
+        month_offset: i64,
+        result: Result<Vec<Expense>>,
+    },
+    ExpenseCategories {
+        epoch: u64,
+        result: Result<Vec<ExpenseCategory>>,
     },
     Projects {
         epoch: u64,
@@ -106,13 +130,17 @@ pub struct App {
     pub entries: Vec<TimeEntry>,
     pub month_entries: Vec<TimeEntry>,
     pub approvals: Vec<ApprovalRequestRow>,
+    pub expenses: Vec<Expense>,
+    pub expense_categories: Vec<ExpenseCategory>,
     pub projects: Vec<Project>,
     pub workspaces: Vec<Workspace>,
     pub running: Option<TimeEntry>,
     /// True while the shown week has nothing to display yet.
     pub loading: bool,
     pub month_loading: bool,
+    pub expenses_loading: bool,
     pub sel_log: usize,
+    pub sel_expense: usize,
     pub sel_ws: usize,
     pub mode: Mode,
     /// (message, is_error)
@@ -147,6 +175,42 @@ fn add_months(date: NaiveDate, offset: i64) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, 1).unwrap()
 }
 
+fn period_bounds_for(
+    period: Period,
+    week_offset: i64,
+    month_offset: i64,
+) -> (NaiveDate, NaiveDate) {
+    match period {
+        Period::Weekly => week_bounds_for(week_offset),
+        Period::Monthly => month_bounds_for(month_offset),
+        Period::SemiMonthly => week_bounds_for(week_offset),
+    }
+}
+
+fn parse_expense_amount(value: &str) -> Result<f64> {
+    let amount: f64 = value
+        .trim()
+        .parse()
+        .with_context(|| format!("could not parse amount '{value}'"))?;
+    if amount <= 0.0 {
+        bail!("amount must be greater than zero");
+    }
+    Ok(amount)
+}
+
+fn optional_text(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn expense_file(value: &str) -> Option<PathBuf> {
+    optional_text(value).map(PathBuf::from)
+}
+
 impl App {
     pub fn new(ctx: Ctx) -> Result<App> {
         let cfg = Config::load()?;
@@ -164,12 +228,16 @@ impl App {
             entries: Vec::new(),
             month_entries: Vec::new(),
             approvals: Vec::new(),
+            expenses: Vec::new(),
+            expense_categories: Vec::new(),
             projects: Vec::new(),
             workspaces: Vec::new(),
             running: None,
             loading: true,
             month_loading: true,
+            expenses_loading: true,
             sel_log: 0,
+            sel_expense: 0,
             sel_ws: 0,
             mode: Mode::Normal,
             status: None,
@@ -183,6 +251,8 @@ impl App {
         app.spawn_entries(0);
         app.spawn_month_entries(0);
         app.spawn_approvals();
+        app.spawn_expenses();
+        app.spawn_expense_categories();
         app.spawn_projects();
         app.spawn_running();
         app.spawn_workspaces();
@@ -194,11 +264,7 @@ impl App {
     }
 
     pub fn report_bounds(&self) -> (NaiveDate, NaiveDate) {
-        match self.report_period {
-            Period::Weekly => self.week_bounds(),
-            Period::Monthly => month_bounds_for(self.month_offset),
-            Period::SemiMonthly => self.week_bounds(),
-        }
+        period_bounds_for(self.report_period, self.week_offset, self.month_offset)
     }
 
     pub fn report_entries(&self) -> &[TimeEntry] {
@@ -224,6 +290,17 @@ impl App {
                 .date_range
                 .as_ref()
                 .is_some_and(|range| range.start.with_timezone(&Local).date_naive() == from)
+        })
+    }
+
+    pub fn expense_approval(&self) -> Option<&ApprovalRequestRow> {
+        let (from, _) = self.report_bounds();
+        self.approvals.iter().find(|row| {
+            row.approval_request
+                .date_range
+                .as_ref()
+                .is_some_and(|range| range.start.with_timezone(&Local).date_naive() == from)
+                && (!row.expenses.is_empty() || row.expense_total.unwrap_or_default() > 0.0)
         })
     }
 
@@ -293,6 +370,41 @@ impl App {
         std::thread::spawn(move || {
             let result = client.approval_requests(&ws, None);
             let _ = tx.send(Msg::Approvals { epoch, result });
+        });
+    }
+
+    fn spawn_expenses(&self) {
+        let (tx, epoch) = (self.tx.clone(), self.epoch);
+        let (client, ws, uid) = (
+            self.ctx.client.clone(),
+            self.ctx.workspace_id.clone(),
+            self.ctx.user_id.clone(),
+        );
+        let (period, week_offset, month_offset) =
+            (self.report_period, self.week_offset, self.month_offset);
+        std::thread::spawn(move || {
+            let (from, to) = period_bounds_for(period, week_offset, month_offset);
+            let result = client.expenses(&ws, &uid).map(|mut expenses| {
+                expenses.retain(|expense| expense.date >= from && expense.date <= to);
+                expenses.sort_by_key(|expense| expense.date);
+                expenses
+            });
+            let _ = tx.send(Msg::Expenses {
+                epoch,
+                period,
+                week_offset,
+                month_offset,
+                result,
+            });
+        });
+    }
+
+    fn spawn_expense_categories(&self) {
+        let (tx, epoch) = (self.tx.clone(), self.epoch);
+        let (client, ws) = (self.ctx.client.clone(), self.ctx.workspace_id.clone());
+        std::thread::spawn(move || {
+            let result = client.expense_categories(&ws, false);
+            let _ = tx.send(Msg::ExpenseCategories { epoch, result });
         });
     }
 
@@ -391,6 +503,40 @@ impl App {
                         Err(e) => self.set_status(format!("{e:#}"), true),
                     }
                 }
+                Msg::Expenses {
+                    epoch,
+                    period,
+                    week_offset,
+                    month_offset,
+                    result,
+                } => {
+                    if epoch != self.epoch {
+                        continue;
+                    }
+                    if period == self.report_period
+                        && week_offset == self.week_offset
+                        && month_offset == self.month_offset
+                    {
+                        self.expenses_loading = false;
+                        match result {
+                            Ok(expenses) => {
+                                self.expenses = expenses;
+                                self.sel_expense =
+                                    self.sel_expense.min(self.expenses.len().saturating_sub(1));
+                            }
+                            Err(e) => self.set_status(format!("{e:#}"), true),
+                        }
+                    }
+                }
+                Msg::ExpenseCategories { epoch, result } => {
+                    if epoch != self.epoch {
+                        continue;
+                    }
+                    match result {
+                        Ok(categories) => self.expense_categories = categories,
+                        Err(e) => self.set_status(format!("{e:#}"), true),
+                    }
+                }
                 Msg::Running { epoch, result } => {
                     if epoch != self.epoch {
                         continue;
@@ -415,9 +561,11 @@ impl App {
         self.month_cache.clear();
         self.loading = self.entries.is_empty();
         self.month_loading = self.month_entries.is_empty();
+        self.expenses_loading = self.expenses.is_empty();
         self.spawn_entries(self.week_offset);
         self.spawn_month_entries(self.month_offset);
         self.spawn_approvals();
+        self.spawn_expenses();
         self.spawn_running();
     }
 
@@ -434,6 +582,10 @@ impl App {
 
     pub fn selected_entry(&self) -> Option<&TimeEntry> {
         self.entries.get(self.sel_log)
+    }
+
+    pub fn selected_expense(&self) -> Option<&Expense> {
+        self.expenses.get(self.sel_expense)
     }
 
     fn set_status(&mut self, msg: impl Into<String>, is_error: bool) {
@@ -465,7 +617,7 @@ impl App {
             KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
             KeyCode::Tab => self.tab = (self.tab + 1) % TABS.len(),
             KeyCode::BackTab => self.tab = (self.tab + TABS.len() - 1) % TABS.len(),
-            KeyCode::Char(c @ '1'..='4') => self.tab = c as usize - '1' as usize,
+            KeyCode::Char(c @ '1'..='5') => self.tab = c as usize - '1' as usize,
             KeyCode::Char('j') | KeyCode::Down => self.move_selection(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_selection(-1),
             KeyCode::Char('h') | KeyCode::Left => self.shift_week(-1),
@@ -476,16 +628,25 @@ impl App {
             }
             KeyCode::Char('t') => self.cycle_theme(),
             KeyCode::Char('s') => self.open_start_form(),
+            KeyCode::Char('a') if self.tab == 2 => self.open_expense_add_form(),
             KeyCode::Char('a') => self.open_add_form(),
+            KeyCode::Char('e') if self.tab == 2 => self.open_expense_edit_form(),
             KeyCode::Char('e') => self.open_edit_form(),
+            KeyCode::Char('d') if self.tab == 2 => self.confirm_delete_expense(),
             KeyCode::Char('d') => self.confirm_delete(),
             KeyCode::Char('x') => self.stop_timer(),
             KeyCode::Char('X') => self.confirm_discard(),
-            KeyCode::Char('m') if self.tab == 1 => self.set_report_period(Period::Monthly),
-            KeyCode::Char('w') if self.tab == 1 => self.set_report_period(Period::Weekly),
+            KeyCode::Char('m') if self.tab == 1 || self.tab == 2 => {
+                self.set_report_period(Period::Monthly)
+            }
+            KeyCode::Char('w') if self.tab == 1 || self.tab == 2 => {
+                self.set_report_period(Period::Weekly)
+            }
             KeyCode::Char('S') if self.tab == 1 => self.confirm_submit(false),
             KeyCode::Char('R') if self.tab == 1 => self.confirm_submit(true),
-            KeyCode::Enter if self.tab == 3 => self.switch_workspace(),
+            KeyCode::Char('S') if self.tab == 2 => self.confirm_submit_expenses(false),
+            KeyCode::Char('R') if self.tab == 2 => self.confirm_submit_expenses(true),
+            KeyCode::Enter if self.tab == 4 => self.switch_workspace(),
             _ => {}
         }
     }
@@ -493,7 +654,8 @@ impl App {
     fn move_selection(&mut self, delta: i64) {
         let (sel, len) = match self.tab {
             0 => (&mut self.sel_log, self.entries.len()),
-            3 => (&mut self.sel_ws, self.workspaces.len()),
+            2 => (&mut self.sel_expense, self.expenses.len()),
+            4 => (&mut self.sel_ws, self.workspaces.len()),
             _ => return,
         };
         if len == 0 {
@@ -503,10 +665,10 @@ impl App {
     }
 
     fn shift_week(&mut self, delta: i64) {
-        if self.tab > 1 {
+        if self.tab > 2 {
             return;
         }
-        if self.tab == 1 && self.report_period == Period::Monthly {
+        if (self.tab == 1 || self.tab == 2) && self.report_period == Period::Monthly {
             self.shift_month(delta);
             return;
         }
@@ -528,6 +690,11 @@ impl App {
             }
         }
         self.spawn_entries(next);
+        if self.tab == 2 {
+            self.expenses.clear();
+            self.expenses_loading = true;
+            self.spawn_expenses();
+        }
     }
 
     fn shift_month(&mut self, delta: i64) {
@@ -547,6 +714,11 @@ impl App {
             }
         }
         self.spawn_month_entries(next);
+        if self.tab == 2 {
+            self.expenses.clear();
+            self.expenses_loading = true;
+            self.spawn_expenses();
+        }
     }
 
     fn set_report_period(&mut self, period: Period) {
@@ -558,6 +730,9 @@ impl App {
             self.month_loading = true;
             self.spawn_month_entries(self.month_offset);
         }
+        self.expenses.clear();
+        self.expenses_loading = true;
+        self.spawn_expenses();
         self.set_status(format!("report period: {}", period), false);
     }
 
@@ -624,6 +799,20 @@ impl App {
         };
     }
 
+    fn confirm_delete_expense(&mut self) {
+        let Some(expense) = self.selected_expense() else {
+            return;
+        };
+        self.mode = Mode::Confirm {
+            message: format!(
+                "Delete expense {} for {}?",
+                expenses::format_amount(expense.total),
+                expense.date
+            ),
+            action: ConfirmAction::DeleteExpense(expense.id.clone()),
+        };
+    }
+
     fn confirm_submit(&mut self, resubmit: bool) {
         let (from, to) = self.report_bounds();
         let window = PeriodWindow {
@@ -646,6 +835,34 @@ impl App {
                         fmt_duration(summary.total),
                     ),
                     action: ConfirmAction::SubmitPeriod { summary, resubmit },
+                };
+            }
+            Err(e) => self.set_status(format!("{e:#}"), true),
+        }
+    }
+
+    fn confirm_submit_expenses(&mut self, resubmit: bool) {
+        let (from, to) = self.report_bounds();
+        let window = PeriodWindow {
+            period: self.report_period,
+            from,
+            to,
+        };
+        let result = day_range(from, to)
+            .and_then(|(start, _)| expenses::summarize_expenses(window, start, &self.expenses));
+        match result {
+            Ok(summary) => {
+                let action = if resubmit { "Resubmit" } else { "Submit" };
+                self.mode = Mode::Confirm {
+                    message: format!(
+                        "{action} {} expense approval for {} – {} ({} expenses, {})?",
+                        summary.window.period,
+                        summary.window.from,
+                        summary.window.to,
+                        summary.expense_count,
+                        expenses::format_amount(summary.total),
+                    ),
+                    action: ConfirmAction::SubmitExpenses { summary, resubmit },
                 };
             }
             Err(e) => self.set_status(format!("{e:#}"), true),
@@ -701,6 +918,33 @@ impl App {
                     Err(e) => self.set_status(format!("{e:#}"), true),
                 }
             }
+            ConfirmAction::DeleteExpense(id) => {
+                match self.ctx.client.delete_expense(&self.ctx.workspace_id, &id) {
+                    Ok(()) => {
+                        self.set_status("expense deleted", false);
+                        self.invalidate();
+                    }
+                    Err(e) => self.set_status(format!("{e:#}"), true),
+                }
+            }
+            ConfirmAction::SubmitExpenses { summary, resubmit } => {
+                match expenses::submit_summary(&self.ctx, &summary, resubmit) {
+                    Ok(approval) => {
+                        let verb = if resubmit { "resubmitted" } else { "submitted" };
+                        self.set_status(
+                            format!(
+                                "{verb} {} expense period {} ({})",
+                                summary.window.period.as_api_str(),
+                                summary.window.from,
+                                approval.id
+                            ),
+                            false,
+                        );
+                        self.invalidate();
+                    }
+                    Err(e) => self.set_status(format!("{e:#}"), true),
+                }
+            }
         }
     }
 
@@ -735,13 +979,18 @@ impl App {
         self.entries.clear();
         self.month_entries.clear();
         self.approvals.clear();
+        self.expenses.clear();
+        self.expense_categories.clear();
         self.projects.clear();
         self.running = None;
         self.loading = true;
         self.month_loading = true;
+        self.expenses_loading = true;
         self.spawn_entries(self.week_offset);
         self.spawn_month_entries(self.month_offset);
         self.spawn_approvals();
+        self.spawn_expenses();
+        self.spawn_expense_categories();
         self.spawn_projects();
         self.spawn_running();
         Ok(())
@@ -758,7 +1007,7 @@ impl App {
     }
 
     fn open_start_form(&mut self) {
-        self.mode = Mode::Form(Form {
+        self.mode = Mode::Form(Box::new(Form {
             kind: FormKind::Start,
             title: " Start timer ",
             fields: vec![
@@ -782,11 +1031,12 @@ impl App {
             focus: 0,
             error: None,
             entry: None,
-        });
+            expense: None,
+        }));
     }
 
     fn open_add_form(&mut self) {
-        self.mode = Mode::Form(Form {
+        self.mode = Mode::Form(Box::new(Form {
             kind: FormKind::Add,
             title: " Add entry ",
             fields: vec![
@@ -814,7 +1064,8 @@ impl App {
             focus: 0,
             error: None,
             entry: None,
-        });
+            expense: None,
+        }));
     }
 
     fn open_edit_form(&mut self) {
@@ -835,7 +1086,7 @@ impl App {
         };
         let from = fmt(entry.time_interval.start);
         let to = entry.time_interval.end.map(fmt).unwrap_or_default();
-        self.mode = Mode::Form(Form {
+        self.mode = Mode::Form(Box::new(Form {
             kind: FormKind::Edit,
             title: " Edit entry ",
             fields: vec![
@@ -859,7 +1110,108 @@ impl App {
             focus: 0,
             error: None,
             entry: Some(entry),
-        });
+            expense: None,
+        }));
+    }
+
+    fn open_expense_add_form(&mut self) {
+        let (from, _) = self.report_bounds();
+        self.mode = Mode::Form(Box::new(Form {
+            kind: FormKind::ExpenseAdd,
+            title: " Add expense ",
+            fields: vec![
+                Field::Text {
+                    label: "Amount",
+                    input: Input::new(""),
+                },
+                Field::Text {
+                    label: "Category",
+                    input: Input::new(""),
+                },
+                Field::Project {
+                    label: "Project",
+                    idx: self.default_project_idx(),
+                },
+                Field::Text {
+                    label: "Date",
+                    input: Input::new(&from.to_string()),
+                },
+                Field::Text {
+                    label: "Notes",
+                    input: Input::new(""),
+                },
+                Field::Text {
+                    label: "File",
+                    input: Input::new(""),
+                },
+                Field::Toggle {
+                    label: "Billable",
+                    on: false,
+                },
+            ],
+            focus: 0,
+            error: None,
+            entry: None,
+            expense: None,
+        }));
+    }
+
+    fn open_expense_edit_form(&mut self) {
+        let Some(expense) = self.selected_expense().cloned() else {
+            return;
+        };
+        let idx = expense
+            .project_id()
+            .and_then(|id| self.active_projects().iter().position(|p| p.id == id));
+        self.mode = Mode::Form(Box::new(Form {
+            kind: FormKind::ExpenseEdit,
+            title: " Edit expense ",
+            fields: vec![
+                Field::Text {
+                    label: "Amount",
+                    input: Input::new(&expenses::format_amount(expense.total)),
+                },
+                Field::Text {
+                    label: "Category",
+                    input: Input::new(expense.category_name().unwrap_or("")),
+                },
+                Field::Project {
+                    label: "Project",
+                    idx,
+                },
+                Field::Text {
+                    label: "Date",
+                    input: Input::new(&expense.date.to_string()),
+                },
+                Field::Text {
+                    label: "Notes",
+                    input: Input::new(expense.notes.as_deref().unwrap_or("")),
+                },
+                Field::Text {
+                    label: "File",
+                    input: Input::new(""),
+                },
+                Field::Toggle {
+                    label: "Billable",
+                    on: expense.billable,
+                },
+            ],
+            focus: 0,
+            error: None,
+            entry: None,
+            expense: Some(expense),
+        }));
+    }
+
+    fn resolve_expense_category(&self, reference: &str) -> Result<ExpenseCategory> {
+        if !self.expense_categories.is_empty() {
+            return expenses::resolve_category_from_slice(&self.expense_categories, reference);
+        }
+        let categories = self
+            .ctx
+            .client
+            .expense_categories(&self.ctx.workspace_id, false)?;
+        expenses::resolve_category_from_slice(&categories, reference)
     }
 
     fn form_key(&mut self, key: KeyEvent) {
@@ -916,6 +1268,7 @@ impl App {
         let Mode::Form(form) = &self.mode else { return };
         let kind = form.kind;
         let entry = form.entry.clone();
+        let expense = form.expense.clone();
         let mut texts: Vec<String> = Vec::new();
         let mut project_idx = None;
         let mut billable = false;
@@ -1030,6 +1383,71 @@ impl App {
                         &body,
                     )?;
                     Ok("entry updated".to_string())
+                }
+                FormKind::ExpenseAdd => {
+                    let amount = parse_expense_amount(&texts[0])?;
+                    let category = self.resolve_expense_category(&texts[1])?;
+                    let project_id = project_id.context("project is required")?;
+                    let date = parse_date(&texts[2])?;
+                    let file = expense_file(&texts[4]);
+                    let draft = ExpenseDraft {
+                        amount,
+                        category_id: category.id,
+                        date: day_range(date, date)?.0,
+                        user_id: self.ctx.user_id.clone(),
+                        project_id: Some(project_id),
+                        task_id: None,
+                        notes: optional_text(&texts[3]),
+                        billable,
+                        file,
+                        change_fields: Vec::new(),
+                    };
+                    self.ctx
+                        .client
+                        .create_expense(&self.ctx.workspace_id, &draft)?;
+                    Ok("expense added".to_string())
+                }
+                FormKind::ExpenseEdit => {
+                    let existing = expense.context("the edited expense vanished")?;
+                    let amount = parse_expense_amount(&texts[0])?;
+                    let category_id = if texts[1].trim().is_empty() {
+                        existing
+                            .category_id()
+                            .context("existing expense has no category id; enter a category")?
+                            .to_string()
+                    } else {
+                        self.resolve_expense_category(&texts[1])?.id
+                    };
+                    let date = parse_date(&texts[2])?;
+                    let file = expense_file(&texts[4]);
+                    let mut change_fields = vec![
+                        ExpenseChangeField::Amount,
+                        ExpenseChangeField::Category,
+                        ExpenseChangeField::Project,
+                        ExpenseChangeField::Date,
+                        ExpenseChangeField::Notes,
+                        ExpenseChangeField::Billable,
+                    ];
+                    if file.is_some() {
+                        change_fields.push(ExpenseChangeField::File);
+                    }
+                    let draft = ExpenseDraft {
+                        amount,
+                        category_id,
+                        date: day_range(date, date)?.0,
+                        user_id: self.ctx.user_id.clone(),
+                        project_id: project_id
+                            .or_else(|| existing.project_id().map(str::to_string)),
+                        task_id: existing.task_id().map(str::to_string),
+                        notes: optional_text(&texts[3]),
+                        billable,
+                        file,
+                        change_fields,
+                    };
+                    self.ctx
+                        .client
+                        .update_expense(&self.ctx.workspace_id, &existing.id, &draft)?;
+                    Ok("expense updated".to_string())
                 }
             }
         })();

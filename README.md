@@ -75,6 +75,9 @@ clockify log --week                               # entries grouped by day, with
 clockify report --month                           # hours per project, with bars
 clockify submit -y                                # submit this month's time for approval
 clockify submit --week                            # submit this week's time for approval
+clockify expenses --month                         # list this month's expenses
+clockify expenses add --amount 12.50 --category meals --date today -p backend --file receipt.jpg
+clockify expenses submit -y                       # submit this month's expenses for approval
 clockify edit 41d7 --to 17:30                     # edit by short id suffix
 clockify edit @ -p backend                        # @ is the running timer
 clockify delete 41d7                              # delete (asks first; -y skips)
@@ -108,8 +111,31 @@ clockify submit --from 2026-07-01 --period monthly
 ```
 
 The command refuses to submit an empty period or a period with a running timer.
-Clockify now handles time and expenses separately; this CLI submits time entries
-only, and does not create expense approval requests.
+Clockify now handles time and expenses separately. Use `clockify expenses submit`
+or `clockify submit --expenses` for expense approval requests:
+
+```sh
+clockify expenses submit -y
+clockify expenses submit --week
+clockify expenses submit --resubmit
+clockify submit --expenses --from 2026-07-01 --period monthly
+```
+
+### Expenses
+
+Expense commands cover item CRUD and category lookup:
+
+```sh
+clockify expenses categories
+clockify expenses --month
+clockify expenses add --amount 18.75 --category meals --date today -p backend --notes "client lunch" --file receipt.jpg
+clockify expenses edit 41d7 --amount 20 --file updated-receipt.jpg
+clockify expenses delete 41d7
+```
+
+Clockify's API marks receipt files as required for create/update in many
+workspaces. The CLI lets you omit `--file`, but if Clockify rejects the request it
+prints a direct `pass --file <path>` message instead of a raw server error.
 
 ### Short entry ids
 
@@ -126,19 +152,20 @@ acts on an ambiguous reference.
 Run `clockify` with no arguments.
 
 ```
-Log · Report · Projects · Workspaces
+Log · Report · Expenses · Projects · Workspaces
 ```
 
 | Key | Action |
 | --- | --- |
-| `Tab` / `1`–`4` | switch view |
+| `Tab` / `1`–`5` | switch view |
 | `j` / `k` | move selection |
 | `h` / `l` | previous / next week |
 | `s` | start a timer (form) |
 | `x` / `X` | stop / discard the running timer |
 | `a` / `e` / `d` | add / edit / delete an entry |
-| `m` / `w` | month / week report period (in Report) |
-| `S` / `R` | submit / resubmit the report period (in Report) |
+| `a` / `e` / `d` | add / edit / delete an expense (in Expenses) |
+| `m` / `w` | month / week report period (in Report or Expenses) |
+| `S` / `R` | submit / resubmit the period (in Report or Expenses) |
 | `Enter` | switch workspace (in Workspaces) |
 | `t` | cycle theme |
 | `r` | refresh |

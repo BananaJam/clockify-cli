@@ -1,7 +1,7 @@
 use chrono::SecondsFormat;
 use serde_json::{Value, json};
 
-use crate::models::{Project, TimeEntry};
+use crate::models::{Expense, Project, TimeEntry};
 
 /// The one JSON shape for a time entry, shared by every `--json` output so
 /// agents and scripts can rely on it.
@@ -14,6 +14,38 @@ pub fn entry_json(e: &TimeEntry, project: Option<&Project>) -> Value {
         "end": e.time_interval.end.map(|t| t.to_rfc3339_opts(SecondsFormat::Secs, true)),
         "duration_seconds": e.duration().num_seconds(),
         "running": e.time_interval.end.is_none(),
+    })
+}
+
+pub fn expense_json(e: &Expense) -> Value {
+    json!({
+        "id": e.id,
+        "date": e.date.to_string(),
+        "total": e.total,
+        "quantity": e.quantity,
+        "billable": e.billable,
+        "locked": e.locked,
+        "notes": e.notes,
+        "category": e.category.as_ref().map(|c| json!({
+            "id": c.id,
+            "name": c.name,
+            "archived": c.archived,
+        })).or_else(|| e.category_id.as_ref().map(|id| json!({ "id": id }))),
+        "project": e.project.as_ref().map(|p| json!({
+            "id": p.id,
+            "name": p.name,
+        })).or_else(|| e.project_id.as_ref().map(|id| json!({ "id": id }))),
+        "task": e.task.as_ref().map(|t| json!({
+            "id": t.id,
+            "name": t.name,
+        })).or_else(|| e.task_id.as_ref().map(|id| json!({ "id": id }))),
+        "file": match (&e.file_id, &e.file_name) {
+            (Some(id), Some(name)) => Some(json!({ "id": id, "name": name })),
+            (Some(id), None) => Some(json!({ "id": id })),
+            _ => None,
+        },
+        "user_id": e.user_id,
+        "workspace_id": e.workspace_id,
     })
 }
 
