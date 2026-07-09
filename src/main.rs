@@ -220,6 +220,16 @@ enum Cmd {
         #[command(subcommand)]
         cmd: SkillCmd,
     },
+    /// Generate man pages (used by packaging; hidden from help)
+    #[command(hide = true)]
+    Man {
+        /// Write one page per subcommand into this directory instead of stdout
+        #[arg(long)]
+        dir: Option<std::path::PathBuf>,
+    },
+    /// Generate shell completions (used by packaging; hidden from help)
+    #[command(hide = true)]
+    Completions { shell: clap_complete::Shell },
 }
 
 #[derive(Subcommand)]
@@ -659,6 +669,16 @@ fn run() -> Result<()> {
             cmd: SkillCmd::Show,
         } => {
             commands::skill::show();
+            Ok(())
+        }
+        Cmd::Man { dir } => commands::man::run(Cli::command(), dir.as_deref()),
+        Cmd::Completions { shell } => {
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "clockify",
+                &mut std::io::stdout(),
+            );
             Ok(())
         }
     }

@@ -5,6 +5,7 @@ pub mod discard;
 pub mod edit;
 pub mod expenses;
 pub mod log;
+pub mod man;
 pub mod projects;
 pub mod report;
 pub mod skill;
